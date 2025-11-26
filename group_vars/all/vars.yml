@@ -1,0 +1,28 @@
+---
+# Default variables for ansible-support-analyzer
+
+# API credentials with priority: environment variables > vault
+redhat_offline_token: "{{ lookup('env', 'REDHAT_OFFLINE_TOKEN') | default(vault_redhat_offline_token, true) }}"
+llm_api_key: "{{ lookup('env', 'LLM_API_KEY') | default(vault_llm_api_key, true) }}"
+
+# Red Hat SSO and API configuration
+redhat_sso_url: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token"
+redhat_api_base_url: "https://api.access.redhat.com/support/v1"
+redhat_api_timeout: 30
+
+# Default output configuration
+default_analysis_file_dest: "reports/{{ support_case_account_name | default('Account') }}_support_case_summary_{{ ansible_date_time.date }}"
+
+# LLM AI configuration (OpenAI-compatible API)
+# For local vLLM: http://localhost:8000/v1
+# For Ollama: http://localhost:11434/v1
+# For OpenAI: https://api.openai.com/v1
+llm_api_base_url: "{{ lookup('env', 'LLM_API_BASE_URL') | default(vault_llm_api_base_url, true) }}"
+llm_model: "{{ lookup('env', 'LLM_MODEL') | default(vault_llm_model | default('gpt-3.5-turbo', true), true) }}"
+llm_temperature: 0.7
+llm_max_tokens: 2048
+llm_timeout: 120
+
+# Case filtering defaults
+default_case_status: "open"  # all, open, closed
+default_support_case_products: ["Red Hat Ansible Automation Platform"]

@@ -1,0 +1,2 @@
+*.yml
+!inputs.example.yml

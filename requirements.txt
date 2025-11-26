@@ -1,0 +1,17 @@
+# Python dependencies for Ansible Support Analyzer
+
+# Ansible
+ansible>=2.15.0
+
+# OpenAI-compatible LLM API (works with vLLM, Ollama, OpenAI, etc.)
+openai>=1.0.0
+
+# HTTP requests
+requests>=2.31.0
+
+# Additional utilities
+python-dateutil>=2.8.2
+
+# Optional: For running local LLM with vLLM
+# vllm>=0.2.0 (uncomment if running vLLM locally)
+
