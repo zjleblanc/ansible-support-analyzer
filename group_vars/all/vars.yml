@@ -24,8 +24,6 @@ llm_max_tokens: 2048
 llm_timeout: 120
 
 # Case filtering defaults
-default_case_status: "open"  # all, open, closed
-default_support_case_products: ["Red Hat Ansible Automation Platform"]
 default_activity_date: "{{ (now().replace(month=((now().month - 7) % 12 + 1), year=now().year - (1 if now().month <= 6 else 0))).strftime('%Y-%m-%d') }}"
 
 # Google Sheets (optional — used with --tags json; see docs/GSUITE_QUICKSTART.md)

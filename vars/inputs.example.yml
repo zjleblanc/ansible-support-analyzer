@@ -6,6 +6,4 @@
 # support_case_account_ids: ['12345678']
 
 # Case / product filters (override group_vars/all/vars.yml defaults):
-# case_status_filter: open
-# support_case_products: ["Red Hat Ansible Automation Platform"]
 # activity_date: "2024-01-01"  # defaults to 6 months before run date

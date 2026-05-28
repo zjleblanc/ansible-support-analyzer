@@ -8,8 +8,6 @@
         account.analysis_file_dest
         | default('reports/' ~ account.name ~ '_support_case_summary_' ~ now(fmt='%Y-%m-%d'))
       }}
-    case_status_filter: "{{ account.case_status_filter | default(case_status_filter) }}"
-    support_case_products: "{{ account.products | default(support_case_products) }}"
     activity_date: "{{ account.activity_date | default(activity_date) }}"
     gsheet_lookup_value: "{{ account.gsheet_lookup_value | default(account.ids[0] | string) }}"
   tags: [always]
@@ -36,7 +34,16 @@
 
 - name: Extract cases from API response | {{ account.name }}
   ansible.builtin.set_fact:
-    all_cases: "{{ r_support_cases.results | map(attribute='json.cases') | flatten | list }}"
+    all_cases: "{{ r_support_cases.results | json_query('[?json].json.cases[]') | default([], true) }}"
+  tags: [filter]
+
+- name: Report API fetch failures | {{ account.name }}
+  when: r_support_cases.results | rejectattr('json', 'defined') | list | length > 0
+  ansible.builtin.debug:
+    msg: >-
+      Warning: {{ r_support_cases.results | rejectattr('json', 'defined') | list | length }}
+      of {{ r_support_cases.results | length }} account API request(s) failed.
+      Proceeding with cases returned by successful requests.
   tags: [filter]
 
 - name: Filter cases by activity date | {{ account.name }}
@@ -48,6 +55,14 @@
         | selectattr('lastModifiedDate', '>=', activity_date)
         | list
       }}
+  tags: [filter]
+
+- name: Note when no cases match activity filter | {{ account.name }}
+  when: all_cases | length == 0
+  ansible.builtin.debug:
+    msg: >-
+      No support cases with activity since {{ activity_date }} for {{ support_case_account_name }}.
+      Reports will still be generated with an empty case set.
   tags: [filter]
 
 - name: Generate base report from template | {{ account.name }}
@@ -93,7 +108,16 @@
 
 - name: Set AI summary variable | {{ account.name }}
   ansible.builtin.set_fact:
-    ai_summary: "{{ ai_analysis.summary | default('*No AI summary available - no cases found or AI analysis failed*') }}"
+    ai_summary: >-
+      {{
+        ai_analysis.summary
+        if ai_analysis.summary is defined
+        else (
+          '*No cases found with activity since ' ~ activity_date ~ ' — AI analysis was not performed.*'
+          if all_cases | length == 0
+          else '*No AI summary available — AI analysis failed.*'
+        )
+      }}
   tags: [ai]
 
 - name: Generate final report with AI insights | {{ account.name }}
@@ -136,7 +160,7 @@
       - "Total Cases Analyzed: {{ all_cases | length }}"
       - "Customer Accounts: {{ support_case_account_ids | length }}"
       - "Report Generated: {{ analysis_file_dest }}"
-      - "AI Analysis: {{ 'Completed' if ai_analysis.summary is defined else 'Skipped' }}"
+      - "AI Analysis: {{ 'Completed' if ai_analysis.summary is defined else ('Skipped (no cases)' if all_cases | length == 0 else 'Skipped') }}"
       - "============================================"
   tags: [ai,pdf,never]
 

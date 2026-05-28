@@ -5,7 +5,7 @@
 {%- macro case_detail(case) -%}
 {"case_id":{{ case.caseNumber | to_json }},"summary":{{ case.summary | to_json }},"account":{{ case.accountNumberRef | to_json }},"product":{{ case.product | to_json }},"version":{{ case.version | default('N/A') | to_json }},"severity":{{ case.severity | to_json }},"status":{{ case.status | to_json }},"created":{{ case.createdDate | to_json }},"last_modified":{{ case.lastModifiedDate | to_json }},"owner":{{ case.owner | default('Unassigned') | to_json }}{% if case.description %},"description":{{ case.description.replace('\n', ' ') | to_json }}{% endif %}}
 {%- endmacro -%}
-{"report":{"account_name":{{ support_case_account_name | to_json }},"generated_at":{{ now(utc=True, fmt='%Y-%m-%dT%H:%M:%SZ') | to_json }},"generator":"Ansible Support Analyzer"},"executive_summary":{"active_cases":{{ all_cases | length }},"cases_by_severity":{ {%- for severity, cases in all_cases | groupby("severity") -%}
+{"report":{"account_name":{{ support_case_account_name | to_json }},"generated_at":{{ now(utc=True, fmt='%Y-%m-%dT%H:%M:%SZ') | to_json }},"generator":"Ansible Support Analyzer"},"executive_summary":{"active_cases":{{ all_cases | length }}{% if all_cases | length == 0 %},"message":{{ ("No support cases with activity since " ~ activity_date) | to_json }}{% endif %},"cases_by_severity":{ {%- for severity, cases in all_cases | groupby("severity") -%}
 {{- severity | to_json -}}:{{- cases | list | length -}}{%- if not loop.last %},{%- endif -%}
 {%- endfor -%}{{ "}" }}{{ "}" }},"ai_insights":{"summary":{{ (ai_summary | default('No AI summary available') | regex_replace('#{1,5}', '###') | replace('---', '')) | to_json }}},"accounts":[
 {%- for account_id in support_case_account_ids -%}
