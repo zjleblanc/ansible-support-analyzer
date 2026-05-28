@@ -1,5 +1,5 @@
 ---
-- name: Set variables for current account
+- name: Set variables for current account | {{ account.name }}
   ansible.builtin.set_fact:
     support_case_account_name: "{{ account.name }}"
     support_case_account_ids: "{{ account.ids }}"
@@ -14,7 +14,7 @@
     gsheet_lookup_value: "{{ account.gsheet_lookup_value | default(account.ids[0] | string) }}"
   tags: [always]
 
-- name: Fetch support cases for each customer account
+- name: Fetch support cases for each customer account | {{ account.name }}
   loop: "{{ support_case_account_ids }}"
   loop_control:
     loop_var: account_id
@@ -34,12 +34,12 @@
   ignore_errors: yes
   tags: [fetch]
 
-- name: Extract cases from API response
+- name: Extract cases from API response | {{ account.name }}
   ansible.builtin.set_fact:
     all_cases: "{{ r_support_cases.results | map(attribute='json.cases') | flatten | list }}"
   tags: [filter]
 
-- name: Filter cases by activity date
+- name: Filter cases by activity date | {{ account.name }}
   ansible.builtin.set_fact:
     all_cases: >-
       {{
@@ -50,7 +50,7 @@
       }}
   tags: [filter]
 
-- name: Generate base report from template
+- name: Generate base report from template | {{ account.name }}
   register: r_base_report_md
   ansible.builtin.template:
     src: templates/report.md.j2
@@ -58,7 +58,7 @@
     mode: '0644'
   tags: [pdf,never]
 
-- name: Generate base report from template
+- name: Generate base report from template | {{ account.name }}
   register: r_base_report_json
   ansible.builtin.template:
     src: templates/report.json.j2
@@ -66,7 +66,7 @@
     mode: '0644'
   tags: [json]
 
-- name: Prepare case data for LLM AI
+- name: Prepare case data for LLM AI | {{ account.name }}
   ansible.builtin.set_fact:
     llm_case_data:
       total_cases: "{{ all_cases | length }}"
@@ -75,7 +75,7 @@
       cases: "{{ all_cases }}"
   tags: [ai]
 
-- name: Generate AI summary with LLM
+- name: Generate AI summary with LLM | {{ account.name }}
   vars:
     _format_instructions: "{{ ('pdf' in ansible_skip_tags) | ternary('Respond in vanilla html. No markdown. No newlines and dashes, use html tags for formatting.', omit) }}"
   llm_summarize:
@@ -91,26 +91,26 @@
   when: all_cases | length > 0
   tags: [ai]
 
-- name: Set AI summary variable
+- name: Set AI summary variable | {{ account.name }}
   ansible.builtin.set_fact:
     ai_summary: "{{ ai_analysis.summary | default('*No AI summary available - no cases found or AI analysis failed*') }}"
   tags: [ai]
 
-- name: Generate final report with AI insights
+- name: Generate final report with AI insights | {{ account.name }}
   ansible.builtin.template:
     src: templates/report.md.j2
     dest: "{{ analysis_file_dest }}.md"
     mode: '0644'
   tags: [ai,pdf,never]
 
-- name: Clean up temporary file | md
+- name: Clean up temporary file | md | {{ account.name }}
   when: r_base_report_md is success
   ansible.builtin.file:
     path: "{{ r_base_report_md.dest }}"
     state: absent
   tags: [ai,pdf,never]
 
-- name: Update Google Sheet
+- name: Update Google Sheet | {{ account.name }} 
   gsheet_update:
     sheet: "{{ gsheet_sheet }}"
     lookup_column: "{{ gsheet_lookup_column }}"
@@ -119,14 +119,14 @@
     update_value: "{{ lookup('template', 'templates/report.json.j2') }}"
   tags: [ai,json]
 
-- name: Clean up temporary file | json
+- name: Clean up temporary file | json | {{ account.name }}
   when: r_base_report_json is success
   ansible.builtin.file:
     path: "{{ r_base_report_json.dest }}"
     state: absent
   tags: [ai,json]
 
-- name: Display summary
+- name: Display summary | {{ account.name }}
   ansible.builtin.debug:
     msg:
       - "============================================"
@@ -140,7 +140,7 @@
       - "============================================"
   tags: [ai,pdf,never]
 
-- name: Generate PDF report
+- name: Generate PDF report | {{ account.name }}
   block:
     - name: Convert markdown to HTML
       ansible.builtin.command:
