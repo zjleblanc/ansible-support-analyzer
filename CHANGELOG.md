@@ -15,6 +15,9 @@ All notable changes to the Ansible Support Analyzer project will be documented i
 - **Google API dependencies**: `google-api-python-client`, `google-auth`, and related packages in `requirements.txt`
 - **Documentation**: [docs/GSUITE_QUICKSTART.md](docs/GSUITE_QUICKSTART.md) for Google Cloud and Sheets setup
 
+### Fixed
+- **`gsheet_update` on Automation Platform**: Serialize dict/list `update_value` payloads to JSON text before writing to Google Sheets, fixing `Invalid values... struct_value` when the controller parses rendered report JSON as a Python object
+
 ### Changed
 - Main playbook sets `activity_date` from `default_activity_date`; override with `-e activity_date=YYYY-MM-DD` or per-account `activity_date`
 - Main playbook loops `support_case_accounts` instead of inlining fetch/analyze tasks

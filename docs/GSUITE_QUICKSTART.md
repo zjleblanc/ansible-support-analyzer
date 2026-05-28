@@ -137,6 +137,7 @@ ansible-playbook analyze_support_cases.yml \
 | `Spreadsheet ID required` | Set `GOOGLE_SHEET_ID` |
 | `403` / permission errors | Share the sheet with the service account email (Editor) |
 | `lookup_value not found` | Match lookup column cell to account name or `gsheet_lookup_value` |
+| `Invalid values... struct_value` | Controller may pass JSON as a dict; ensure `library/gsheet_update.py` serializes dict/list values (fixed in 1.4.0+) |
 | Empty or stale cell | Re-run with `--tags json`; confirm `--skip-tags ai` was not used unintentionally |
 
 ## Module reference

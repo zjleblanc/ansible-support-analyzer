@@ -104,6 +104,7 @@ spreadsheet_id:
     returned: success
 '''
 
+import json
 import os
 import re
 
@@ -171,11 +172,28 @@ def cell_range(sheet, column, row):
     return f"{quote_sheet(sheet)}!{column}{row}"
 
 
+def coerce_cell_value(value):
+    """Return a scalar Google Sheets accepts (str, int, float, bool).
+
+    Ansible may pass dict/list for type=raw when the rendered value looks like
+    JSON; the API rejects those as struct_value unless serialized to text.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, default=str, separators=(",", ":"))
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value
+    return str(value)
+
+
 def cell_values_match(cell, lookup_value):
     """Compare a sheet cell to the requested lookup value."""
     if cell is None or cell == "":
         return False
-    return str(cell) == str(lookup_value)
+    return str(cell) == str(coerce_cell_value(lookup_value))
 
 
 def find_row_by_lookup(column_values, lookup_value):
@@ -203,6 +221,7 @@ def get_column_values(service, spreadsheet_id, sheet, column):
 
 def update_cell(service, spreadsheet_id, range_name, value):
     """Write a single cell using USER_ENTERED parsing."""
+    cell_value = coerce_cell_value(value)
     return (
         service.spreadsheets()
         .values()
@@ -210,7 +229,7 @@ def update_cell(service, spreadsheet_id, range_name, value):
             spreadsheetId=spreadsheet_id,
             range=range_name,
             valueInputOption=VALUE_INPUT_OPTION,
-            body={"values": [[value]]},
+            body={"values": [[cell_value]]},
         )
         .execute()
     )
