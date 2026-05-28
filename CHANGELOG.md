@@ -5,6 +5,8 @@ All notable changes to the Ansible Support Analyzer project will be documented i
 ## [1.4.0] - 2026-05-28
 
 ### Added
+- **Default activity date filter**: `default_activity_date` in `group_vars/all/vars.yml` sets a 6-month lookback from the run date using the `now()` Jinja filter (no `gather_facts` required)
+- **Activity date filtering**: Cases are filtered by `lastModifiedDate >= activity_date` in `tasks/analyze_account.yml`
 - **Google Sheets integration**: New `gsheet_update` module updates a spreadsheet row by lookup column/value
 - **JSON report output**: `templates/report.json.j2` produces minified JSON for sheet cells (tag: `json`)
 - **Multi-account batch runs**: `support_case_accounts` list with per-account `name`, `ids`, and optional overrides
@@ -14,11 +16,12 @@ All notable changes to the Ansible Support Analyzer project will be documented i
 - **Documentation**: [docs/GSUITE_QUICKSTART.md](docs/GSUITE_QUICKSTART.md) for Google Cloud and Sheets setup
 
 ### Changed
+- Main playbook sets `activity_date` from `default_activity_date`; override with `-e activity_date=YYYY-MM-DD` or per-account `activity_date`
 - Main playbook loops `support_case_accounts` instead of inlining fetch/analyze tasks
 - Legacy single-account variables (`support_case_account_name` + `support_case_account_ids`) still supported
 - **Tag-based outputs**: `json` (default) writes to Google Sheets; `pdf` generates markdown/HTML/PDF reports
 - `llm_summarize` accepts optional `format_instructions` (e.g. HTML for PDF pipeline)
-- `vars/inputs.example.yml` updated for current variable names
+- `vars/inputs.example.yml` updated for current variable names; documents optional `activity_date` override
 
 ### Environment Variables (Google Sheets)
 
