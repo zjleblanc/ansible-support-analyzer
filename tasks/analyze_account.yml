@@ -11,7 +11,7 @@
     case_status_filter: "{{ account.case_status_filter | default(case_status_filter) }}"
     support_case_products: "{{ account.products | default(support_case_products) }}"
     activity_date: "{{ account.activity_date | default(activity_date) }}"
-    gsheet_lookup_value: "{{ account.gsheet_lookup_value | default(account.name) }}"
+    gsheet_lookup_value: "{{ account.gsheet_lookup_value | default(account.ids[0] | string) }}"
   tags: [always]
 
 - name: Fetch support cases for each customer account
