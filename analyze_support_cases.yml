@@ -11,6 +11,7 @@
     analysis_file_dest: "{{ default_analysis_file_dest }}"
     case_status_filter: "{{ default_case_status }}"
     support_case_products: "{{ default_support_case_products }}"
+    activity_date: "{{ default_activity_date }}"
     secure_logging: true
 
   tasks:

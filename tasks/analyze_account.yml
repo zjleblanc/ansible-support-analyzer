@@ -10,6 +10,7 @@
       }}
     case_status_filter: "{{ account.case_status_filter | default(case_status_filter) }}"
     support_case_products: "{{ account.products | default(support_case_products) }}"
+    activity_date: "{{ account.activity_date | default(activity_date) }}"
     gsheet_lookup_value: "{{ account.gsheet_lookup_value | default(account.name) }}"
   tags: [always]
 
@@ -36,6 +37,17 @@
 - name: Extract cases from API response
   ansible.builtin.set_fact:
     all_cases: "{{ r_support_cases.results | map(attribute='json.cases') | flatten | list }}"
+  tags: [filter]
+
+- name: Filter cases by activity date
+  ansible.builtin.set_fact:
+    all_cases: >-
+      {{
+        all_cases
+        | selectattr('lastModifiedDate', 'defined')
+        | selectattr('lastModifiedDate', '>=', activity_date)
+        | list
+      }}
   tags: [filter]
 
 - name: Generate base report from template
