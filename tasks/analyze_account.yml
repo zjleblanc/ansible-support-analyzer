@@ -1,0 +1,141 @@
+---
+- name: Set variables for current account
+  ansible.builtin.set_fact:
+    support_case_account_name: "{{ account.name }}"
+    support_case_account_ids: "{{ account.ids }}"
+    analysis_file_dest: >-
+      {{
+        account.analysis_file_dest
+        | default('reports/' ~ account.name ~ '_support_case_summary_' ~ now(fmt='%Y-%m-%d'))
+      }}
+    case_status_filter: "{{ account.case_status_filter | default(case_status_filter) }}"
+    support_case_products: "{{ account.products | default(support_case_products) }}"
+    gsheet_lookup_value: "{{ account.gsheet_lookup_value | default(account.name) }}"
+  tags: [always]
+
+- name: Fetch support cases for each customer account
+  loop: "{{ support_case_account_ids }}"
+  loop_control:
+    loop_var: account_id
+    label: "Account {{ account_id }}"
+  ansible.builtin.uri:
+    url: "{{ redhat_api_base_url }}/cases/filter"
+    method: POST
+    body:
+      accountNumber: "{{ account_id }}"
+    headers:
+      Accept: "application/json"
+      Authorization: "Bearer {{ redhat_access_token }}"
+    body_format: json
+    status_code: [200, 201]
+    timeout: "{{ redhat_api_timeout }}"
+  register: r_support_cases
+  ignore_errors: yes
+  tags: [fetch]
+
+- name: Extract cases from API response
+  ansible.builtin.set_fact:
+    all_cases: "{{ r_support_cases.results | map(attribute='json.cases') | flatten | list }}"
+  tags: [filter]
+
+- name: Generate base report from template
+  register: r_base_report_md
+  ansible.builtin.template:
+    src: templates/report.md.j2
+    dest: "{{ analysis_file_dest }}.md.tmp"
+    mode: '0644'
+  tags: [pdf,never]
+
+- name: Generate base report from template
+  register: r_base_report_json
+  ansible.builtin.template:
+    src: templates/report.json.j2
+    dest: "{{ analysis_file_dest }}.json.tmp"
+    mode: '0644'
+  tags: [json]
+
+- name: Prepare case data for LLM AI
+  ansible.builtin.set_fact:
+    llm_case_data:
+      total_cases: "{{ all_cases | length }}"
+      account_name: "{{ support_case_account_name }}"
+      accounts: "{{ support_case_account_ids }}"
+      cases: "{{ all_cases }}"
+  tags: [ai]
+
+- name: Generate AI summary with LLM
+  vars:
+    _format_instructions: "{{ ('pdf' in ansible_skip_tags) | ternary('Respond in vanilla html. No markdown. No newlines and dashes, use html tags for formatting.', omit) }}"
+  llm_summarize:
+    api_key: "{{ llm_api_key }}"
+    api_base_url: "{{ llm_api_base_url }}"
+    case_data: "{{ llm_case_data }}"
+    model: "{{ llm_model }}"
+    temperature: "{{ llm_temperature }}"
+    max_tokens: "{{ llm_max_tokens }}"
+    format_instructions: "{{ _format_instructions }}"
+    timeout: "{{ llm_timeout }}"
+  register: ai_analysis
+  when: all_cases | length > 0
+  tags: [ai]
+
+- name: Set AI summary variable
+  ansible.builtin.set_fact:
+    ai_summary: "{{ ai_analysis.summary | default('*No AI summary available - no cases found or AI analysis failed*') }}"
+  tags: [ai]
+
+- name: Generate final report with AI insights
+  ansible.builtin.template:
+    src: templates/report.md.j2
+    dest: "{{ analysis_file_dest }}.md"
+    mode: '0644'
+  tags: [ai,pdf,never]
+
+- name: Clean up temporary file | md
+  when: r_base_report_md is success
+  ansible.builtin.file:
+    path: "{{ r_base_report_md.dest }}"
+    state: absent
+  tags: [ai,pdf,never]
+
+- name: Update Google Sheet
+  gsheet_update:
+    sheet: "{{ gsheet_sheet }}"
+    lookup_column: "{{ gsheet_lookup_column }}"
+    lookup_value: "{{ gsheet_lookup_value }}"
+    update_column: "{{ gsheet_update_column }}"
+    update_value: "{{ lookup('template', 'templates/report.json.j2') }}"
+  tags: [ai,json]
+
+- name: Clean up temporary file | json
+  when: r_base_report_json is success
+  ansible.builtin.file:
+    path: "{{ r_base_report_json.dest }}"
+    state: absent
+  tags: [ai,json]
+
+- name: Display summary
+  ansible.builtin.debug:
+    msg:
+      - "============================================"
+      - "Support Case Analysis Complete!"
+      - "============================================"
+      - "Account: {{ support_case_account_name }}"
+      - "Total Cases Analyzed: {{ all_cases | length }}"
+      - "Customer Accounts: {{ support_case_account_ids | length }}"
+      - "Report Generated: {{ analysis_file_dest }}"
+      - "AI Analysis: {{ 'Completed' if ai_analysis.summary is defined else 'Skipped' }}"
+      - "============================================"
+  tags: [ai,pdf,never]
+
+- name: Generate PDF report
+  block:
+    - name: Convert markdown to HTML
+      ansible.builtin.command:
+        cmd: "pandoc --standalone -c ~/.pandoc/github-md.css -f gfm {{ analysis_file_dest }}.md -o {{ analysis_file_dest }}.html"
+      tags: [ai,pdf,never]
+
+    - name: Convert HTML to PDF
+      ansible.builtin.command:
+        cmd: "weasyprint -q {{ analysis_file_dest }}.html {{ analysis_file_dest }}.pdf"
+      tags: [ai,pdf,never]

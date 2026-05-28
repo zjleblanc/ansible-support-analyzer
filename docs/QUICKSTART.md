@@ -58,47 +58,73 @@ vault_llm_api_base_url: "http://localhost:8000/v1"
 vault_llm_model: "meta-llama/Llama-2-70b-chat-hf"
 ```
 
-## Step 3: Run Your First Analysis
+## Step 3: Configure accounts
+
+```bash
+cp vars/accounts.example.yml vars/accounts.yml
+```
+
+Edit `vars/accounts.yml` with your account display name and Red Hat account number(s):
+
+```yaml
+support_case_accounts:
+  - name: My Customer
+    ids: ['YOUR_ACCOUNT_ID']
+```
+
+## Step 4: Run your first analysis
+
+```bash
+ansible-playbook analyze_support_cases.yml -e @vars/accounts.yml
+```
+
+By default this runs the **Google Sheets / JSON** path (see [GSUITE_QUICKSTART.md](GSUITE_QUICKSTART.md)). Set `GOOGLE_SA_CRED_PATH` and `GOOGLE_SHEET_ID` before running if you use Sheets.
+
+For a local markdown report instead:
 
 ```bash
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['YOUR_ACCOUNT_ID']" \
-  -e "activity_date=2024-01-01"
+  -e @vars/accounts.yml \
+  --tags pdf
 ```
 
-Replace `YOUR_ACCOUNT_ID` with your actual Red Hat customer account number.
+## Step 5: View output
 
-## Step 4: View the Report
+**Google Sheets:** open your spreadsheet and check the update column for the account row.
+
+**Markdown (with `--tags pdf`):**
 
 ```bash
-cat reports/support_case_summary_*.md
+cat reports/*_support_case_summary_*.md
 ```
 
 ## Common Use Cases
 
-### Analyze Multiple Accounts
+### Multiple accounts
+
+Add entries to `vars/accounts.yml` (see `vars/accounts.example.yml`), then:
 
 ```bash
-ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456','789012','345678']" \
-  -e "activity_date=2024-01-01"
+ansible-playbook analyze_support_cases.yml -e @vars/accounts.yml
 ```
 
-### Last 30 Days Only
+### Google Sheets dashboard
+
+See [GSUITE_QUICKSTART.md](GSUITE_QUICKSTART.md) for service account setup, then export:
 
 ```bash
-ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=$(date -d '30 days ago' +%Y-%m-%d)"
+export GOOGLE_SA_CRED_PATH="/path/to/service-account.json"
+export GOOGLE_SHEET_ID="your-spreadsheet-id"
+
+ansible-playbook analyze_support_cases.yml -e @vars/accounts.yml
 ```
 
-### Custom Report Name
+### PDF / markdown reports
 
 ```bash
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=2024-01-01" \
-  -e "output_file=reports/monthly_review.md"
+  -e @vars/accounts.yml \
+  --tags pdf
 ```
 
 ## Troubleshooting
@@ -123,7 +149,7 @@ Make sure you've set either environment variables OR created a vault file.
 
 - Read the full [README.md](README.md) for detailed documentation
 - Customize the report template in `templates/report.md.j2`
-- Adjust AI prompts in `library/gemini_summarize.py`
+- Adjust AI prompts in `library/llm_summarize.py`
 - Set up automated reports with cron
 
 ## Getting API Keys
@@ -164,11 +190,8 @@ Note: If you don't see the API management page, you may need API access. Contact
 
 **See [LLM_CONFIGURATION.md](LLM_CONFIGURATION.md) for detailed setup**
 
-### Google Gemini API
-1. Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. Sign in with your Google account
-3. Create a new API key
-4. Copy the key and use it in your configuration
+### Google Sheets (optional)
+See [GSUITE_QUICKSTART.md](GSUITE_QUICKSTART.md) for service account and spreadsheet sharing steps.
 
 ## Support
 

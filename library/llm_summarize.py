@@ -59,6 +59,12 @@ options:
         required: false
         type: int
         default: 120
+    format_instructions:
+        description:
+            - Instructions appended to the prompt for how the LLM should format its response
+        required: false
+        type: str
+        default: 'Format your response in clear markdown without headers and use bullet points for readability. Do not use numbered lists.'
 '''
 
 EXAMPLES = r'''
@@ -134,8 +140,13 @@ try:
 except ImportError:
     HAS_OPENAI = False
 
+DEFAULT_FORMAT_INSTRUCTIONS = (
+    'Format your response in clear markdown without headers and use bullet points '
+    'for readability. Do not use numbered lists.'
+)
 
-def build_prompt(case_data):
+
+def build_prompt(case_data, format_instructions):
     """Build a comprehensive prompt for LLM analysis."""
     
     total_cases = len(case_data.get('cases', []))
@@ -176,13 +187,15 @@ Please provide:
 
 - **Important Contacts**: Identify important email addresses involved in the support case activity.
 
-Format your response in clear markdown without headers and use bullet points for readability. Do not use numbered lists.
+{format_instructions}
 """
     
     return prompt
 
 
-def generate_summary(api_key, api_base_url, case_data, model, temperature, max_tokens, timeout):
+def generate_summary(
+    api_key, api_base_url, case_data, model, temperature, max_tokens, timeout, format_instructions
+):
     """Generate summary using OpenAI-compatible API."""
     
     try:
@@ -197,7 +210,7 @@ def generate_summary(api_key, api_base_url, case_data, model, temperature, max_t
         )
         
         # Build prompt
-        prompt = build_prompt(case_data)
+        prompt = build_prompt(case_data, format_instructions)
         
         # Create chat completion
         response = client.chat.completions.create(
@@ -235,6 +248,7 @@ def main():
             temperature=dict(type='float', required=False, default=0.7),
             max_tokens=dict(type='int', required=False, default=4096),
             timeout=dict(type='int', required=False, default=120),
+            format_instructions=dict(type='str', required=False, default=DEFAULT_FORMAT_INSTRUCTIONS),
         ),
         supports_check_mode=False
     )
@@ -249,6 +263,7 @@ def main():
     temperature = module.params['temperature']
     max_tokens = module.params['max_tokens']
     timeout = module.params['timeout']
+    format_instructions = module.params['format_instructions']
     
     # Validate inputs
     if not api_key:
@@ -262,8 +277,8 @@ def main():
     
     # Generate summary
     summary, error = generate_summary(
-        api_key, api_base_url, case_data, model, 
-        temperature, max_tokens, timeout
+        api_key, api_base_url, case_data, model,
+        temperature, max_tokens, timeout, format_instructions
     )
     
     if error:

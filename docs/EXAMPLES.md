@@ -2,56 +2,85 @@
 
 This document provides practical examples for using the Ansible Support Analyzer.
 
+## Configuration files
+
+Runtime inputs are usually loaded from `vars/` (see `vars/.gitignore`):
+
+| File | Purpose |
+|------|---------|
+| `vars/accounts.example.yml` → `vars/accounts.yml` | `support_case_accounts` list |
+| `vars/inputs.example.yml` → `vars/inputs.yml` | Legacy single-account vars (optional) |
+
+```bash
+cp vars/accounts.example.yml vars/accounts.yml
+# edit vars/accounts.yml
+```
+
 ## Basic Examples
 
-### 1. Single Account Analysis
-
-Analyze support cases for one customer account:
+### 1. Single account (legacy variables)
 
 ```bash
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=2024-01-01"
+  -e "support_case_account_name=Parasol" \
+  -e "support_case_account_ids=['123456']"
 ```
 
-### 2. Multiple Accounts
-
-Analyze multiple customer accounts simultaneously:
+### 2. Multiple accounts (recommended)
 
 ```bash
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456','789012','345678']" \
-  -e "activity_date=2024-01-01"
+  -e @vars/accounts.yml
 ```
 
-### 3. Recent Activity Only
+Example `vars/accounts.yml`:
 
-Get cases with activity in the last 30 days:
+```yaml
+support_case_accounts:
+  - name: Parasol
+    ids: ['123456']
+  - name: Acme Corp
+    ids: ['789012', '345678']
+```
+
+### 3. Per-account output path
+
+Override the report path for one account in `vars/accounts.yml`:
+
+```yaml
+support_case_accounts:
+  - name: Parasol
+    ids: ['123456']
+    analysis_file_dest: reports/parasol_q4_2024
+```
+
+### 4. Google Sheets (JSON output)
+
+Set Google credentials (see [GSUITE_QUICKSTART.md](GSUITE_QUICKSTART.md)), then run:
+
+```bash
+export GOOGLE_SA_CRED_PATH="$HOME/.config/support-analyzer/google-sa.json"
+export GOOGLE_SHEET_ID="your-spreadsheet-id"
+export GSHEET_SHEET="Accounts"
+export GSHEET_LOOKUP_COLUMN="K"
+export GSHEET_UPDATE_COLUMN="O"
+
+ansible-playbook analyze_support_cases.yml -e @vars/accounts.yml
+```
+
+The `json` tag path updates the spreadsheet; lookup defaults to each account `name` unless `gsheet_lookup_value` is set.
+
+### 5. Markdown and PDF reports
+
+Tasks tagged `pdf` are skipped by default. Request them explicitly:
 
 ```bash
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=$(date -d '30 days ago' +%Y-%m-%d)"
+  -e @vars/accounts.yml \
+  --tags pdf
 ```
 
-### 4. Last Week's Activity
-
-```bash
-ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=$(date -d '1 week ago' +%Y-%m-%d)"
-```
-
-### 5. Custom Output File
-
-Specify where to save the report:
-
-```bash
-ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=2024-01-01" \
-  -e "output_file=reports/q4_2024_customer_review.md"
-```
+Reports are written under `reports/` (or `analysis_file_dest` per account).
 
 ## Using Ansible Vault
 
@@ -60,8 +89,7 @@ ansible-playbook analyze_support_cases.yml \
 ```bash
 ansible-playbook analyze_support_cases.yml \
   --ask-vault-pass \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=2024-01-01"
+  -e @vars/accounts.yml
 ```
 
 ### With Vault Password File
@@ -69,8 +97,7 @@ ansible-playbook analyze_support_cases.yml \
 ```bash
 ansible-playbook analyze_support_cases.yml \
   --vault-password-file ~/.ansible/vault_pass.txt \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=2024-01-01"
+  -e @vars/accounts.yml
 ```
 
 ## Advanced Examples
@@ -79,54 +106,48 @@ ansible-playbook analyze_support_cases.yml \
 
 ```bash
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=2024-01-01" \
+  -e @vars/accounts.yml \
   -vvv
 ```
 
-### 7. Skip AI Analysis (Faster, Basic Report Only)
+### 7. Skip AI Analysis
 
 ```bash
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=2024-01-01" \
+  -e @vars/accounts.yml \
   --skip-tags ai
 ```
 
-### 8. Only Fetch Data (No Report Generation)
+### 8. Only Fetch Data
 
 ```bash
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=2024-01-01" \
+  -e @vars/accounts.yml \
   --tags fetch,filter
 ```
 
-### 9. Quarterly Report
+### 9. Sheets only (no PDF)
 
-Generate a report for the entire quarter:
+Default run updates Google Sheets and skips markdown/PDF (`never` tag). To avoid Sheets:
 
 ```bash
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456','789012']" \
-  -e "activity_date=2024-10-01" \
-  -e "output_file=reports/Q4_2024_Summary.md"
+  -e @vars/accounts.yml \
+  --skip-tags json
 ```
 
-### 10. Multiple Accounts with Different Priorities
+### 10. Split accounts across runs
+
+```yaml
+# vars/accounts-priority.yml
+support_case_accounts:
+  - name: Tier1 Customer
+    ids: ['111111']
+```
 
 ```bash
-# High-priority accounts
-ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['111111','222222']" \
-  -e "activity_date=2024-11-01" \
-  -e "output_file=reports/priority_accounts_nov2024.md"
-
-# Standard accounts
-ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['333333','444444','555555']" \
-  -e "activity_date=2024-11-01" \
-  -e "output_file=reports/standard_accounts_nov2024.md"
+ansible-playbook analyze_support_cases.yml -e @vars/accounts-priority.yml
+ansible-playbook analyze_support_cases.yml -e @vars/accounts-standard.yml
 ```
 
 ## Automation Examples
@@ -140,14 +161,14 @@ Add to crontab for weekly Monday morning reports:
 crontab -e
 
 # Add this line (runs every Monday at 9 AM)
-0 9 * * 1 cd /path/to/ansible-support-analyzer && /usr/bin/ansible-playbook analyze_support_cases.yml -e "customer_account_ids=['123456']" -e "activity_date=$(date -d '7 days ago' +\%Y-\%m-\%d)" -e "output_file=reports/weekly_$(date +\%Y\%m\%d).md" >> /var/log/ansible-support-analyzer.log 2>&1
+0 9 * * 1 cd /path/to/ansible-support-analyzer && /usr/bin/ansible-playbook analyze_support_cases.yml -e @vars/accounts.yml >> /var/log/ansible-support-analyzer.log 2>&1
 ```
 
 ### 12. Monthly Report on First of Month
 
 ```bash
 # Add to crontab (runs at 6 AM on the 1st of each month)
-0 6 1 * * cd /path/to/ansible-support-analyzer && /usr/bin/ansible-playbook analyze_support_cases.yml -e "customer_account_ids=['123456']" -e "activity_date=$(date -d '1 month ago' +\%Y-\%m-\%d)" -e "output_file=reports/monthly_$(date +\%Y\%m).md"
+0 6 1 * * cd /path/to/ansible-support-analyzer && /usr/bin/ansible-playbook analyze_support_cases.yml -e @vars/accounts.yml --tags pdf
 ```
 
 ### 13. Shell Script Wrapper
@@ -160,24 +181,14 @@ Create a script `run_analysis.sh`:
 
 set -e
 
-ACCOUNTS="['123456','789012']"
-DATE=$(date -d '30 days ago' +%Y-%m-%d)
-OUTPUT="reports/analysis_$(date +%Y%m%d).md"
-
 echo "Running support case analysis..."
-echo "Accounts: $ACCOUNTS"
-echo "Date filter: $DATE"
-echo "Output: $OUTPUT"
 
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=$ACCOUNTS" \
-  -e "activity_date=$DATE" \
-  -e "output_file=$OUTPUT"
+  -e @vars/accounts.yml
 
 if [ $? -eq 0 ]; then
-    echo "Analysis complete! Report saved to $OUTPUT"
+    echo "Analysis complete!"
     # Optional: send notification
-    # mail -s "Support Analysis Complete" admin@company.com < $OUTPUT
 else
     echo "Analysis failed!"
     exit 1
@@ -190,9 +201,8 @@ fi
 
 ```bash
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=2024-01-01" \
-  -e "output_file=reports/latest.md"
+  -e @vars/accounts.yml \
+  --tags pdf
 
 # Email the report
 mail -s "Red Hat Support Case Analysis" \
@@ -204,9 +214,8 @@ mail -s "Red Hat Support Case Analysis" \
 
 ```bash
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=2024-01-01" \
-  -e "output_file=reports/analysis.md"
+  -e @vars/accounts.yml \
+  --tags pdf
 
 # Convert to PDF using pandoc
 pandoc reports/analysis.md -o reports/analysis.pdf
@@ -219,9 +228,8 @@ aws s3 cp reports/analysis.pdf s3://company-reports/
 
 ```bash
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=2024-01-01" \
-  -e "output_file=reports/$(date +%Y%m%d)_analysis.md"
+  -e @vars/accounts.yml \
+  --tags pdf
 
 # Commit the report
 cd reports
@@ -234,9 +242,8 @@ git push
 
 ```bash
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=2024-01-01" \
-  -e "output_file=reports/latest.md"
+  -e @vars/accounts.yml \
+  --tags pdf
 
 # Extract summary and post to Slack
 SUMMARY=$(head -n 50 reports/latest.md)
@@ -252,11 +259,10 @@ curl -X POST -H 'Content-type: application/json' \
 ```bash
 # Use test credentials
 export REDHAT_OFFLINE_TOKEN="test-offline-token"
-export GEMINI_API_KEY="test-key"
+export LLM_API_KEY="test-key"
 
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['999999']" \
-  -e "activity_date=2024-01-01" \
+  -e @vars/accounts.yml \
   -vvv
 ```
 
@@ -266,9 +272,8 @@ ansible-playbook analyze_support_cases.yml \
 # Load from secure vault
 ansible-playbook analyze_support_cases.yml \
   --vault-password-file /secure/vault_pass \
-  -e "customer_account_ids=['123456','789012','345678']" \
-  -e "activity_date=2024-01-01" \
-  -e "output_file=/secure/reports/production_$(date +%Y%m%d).md"
+  -e @vars/accounts.yml \
+  --tags pdf
 ```
 
 ## Troubleshooting Examples
@@ -277,8 +282,7 @@ ansible-playbook analyze_support_cases.yml \
 
 ```bash
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=2024-01-01" \
+  -e @vars/accounts.yml \
   --check \
   -vvvv
 ```
@@ -287,8 +291,7 @@ ansible-playbook analyze_support_cases.yml \
 
 ```bash
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=2024-01-01" \
+  -e @vars/accounts.yml \
   --tags fetch \
   --step
 ```
@@ -297,8 +300,7 @@ ansible-playbook analyze_support_cases.yml \
 
 ```bash
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=2024-01-01" \
+  -e @vars/accounts.yml \
   --skip-tags ai \
   -v
 ```
@@ -312,29 +314,26 @@ The playbook processes accounts in sequence by default. For large numbers of acc
 ```bash
 # Terminal 1
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['111111','222222']" \
-  -e "activity_date=2024-01-01" \
-  -e "output_file=reports/batch1.md" &
+  -e @vars/accounts-batch1.yml &
 
 # Terminal 2
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['333333','444444']" \
-  -e "activity_date=2024-01-01" \
-  -e "output_file=reports/batch2.md" &
+  -e @vars/accounts-batch2.yml &
 ```
 
 ## Tips
 
-- **Date Format**: Always use `YYYY-MM-DD` format for dates
-- **Account IDs**: Must be provided as a list: `['123456']` or `['123456','789012']`
-- **Output Directory**: Will be created automatically if it doesn't exist
-- **Rate Limiting**: Be mindful of Red Hat API rate limits when processing many accounts
-- **API Quotas**: Check your Gemini API quota if processing large numbers of cases
+- **Account IDs**: Provide as YAML lists under each account’s `ids`
+- **Output**: Default run updates Google Sheets (`json` tag); use `--tags pdf` for markdown/PDF under `reports/`
+- **Rate limiting**: Be mindful of Red Hat API limits when processing many accounts
+- **LLM quotas**: Monitor your LLM provider when analyzing large case volumes
+- **Google Sheets**: See [GSUITE_QUICKSTART.md](GSUITE_QUICKSTART.md) for service account setup
 
 ## Getting Help
 
 For more information:
-- Main documentation: [README.md](README.md)
+- Main documentation: [README.md](../README.md)
 - Quick start: [QUICKSTART.md](QUICKSTART.md)
+- Google Sheets: [GSUITE_QUICKSTART.md](GSUITE_QUICKSTART.md)
 - Open an issue for bugs or questions
 

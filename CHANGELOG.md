@@ -2,6 +2,36 @@
 
 All notable changes to the Ansible Support Analyzer project will be documented in this file.
 
+## [1.4.0] - 2026-05-28
+
+### Added
+- **Google Sheets integration**: New `gsheet_update` module updates a spreadsheet row by lookup column/value
+- **JSON report output**: `templates/report.json.j2` produces minified JSON for sheet cells (tag: `json`)
+- **Multi-account batch runs**: `support_case_accounts` list with per-account `name`, `ids`, and optional overrides
+- **Task refactor**: Per-account workflow in `tasks/analyze_account.yml` (included from main playbook)
+- **Ansible Automation Platform**: Custom credential type (`support_analyzer.cred.yml`, `controller/`) injects Red Hat, LLM, and Google credentials
+- **Google API dependencies**: `google-api-python-client`, `google-auth`, and related packages in `requirements.txt`
+- **Documentation**: [docs/GSUITE_QUICKSTART.md](docs/GSUITE_QUICKSTART.md) for Google Cloud and Sheets setup
+
+### Changed
+- Main playbook loops `support_case_accounts` instead of inlining fetch/analyze tasks
+- Legacy single-account variables (`support_case_account_name` + `support_case_account_ids`) still supported
+- **Tag-based outputs**: `json` (default) writes to Google Sheets; `pdf` generates markdown/HTML/PDF reports
+- `llm_summarize` accepts optional `format_instructions` (e.g. HTML for PDF pipeline)
+- `vars/inputs.example.yml` updated for current variable names
+
+### Environment Variables (Google Sheets)
+
+| Variable | Purpose |
+|----------|---------|
+| `GOOGLE_SA_CRED_PATH` | Path to service account JSON key file |
+| `GOOGLE_SHEET_ID` | Spreadsheet ID from the Google Sheets URL |
+| `GSHEET_SHEET` | Worksheet name (default: `Accounts` in Controller credential) |
+| `GSHEET_LOOKUP_COLUMN` | Column letter to find the account row |
+| `GSHEET_UPDATE_COLUMN` | Column letter to write the JSON report |
+
+Per-account `gsheet_lookup_value` defaults to the account `name` when not set on the account dict.
+
 ## [1.3.0] - 2024-11-21
 
 ### Changed - Breaking Changes

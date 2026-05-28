@@ -8,6 +8,7 @@ An Ansible automation project that fetches Red Hat support cases, filters by act
 - 📅 **Activity Filtering**: Filter cases by last activity date to focus on recent issues
 - 📊 **Comprehensive Reports**: Generate detailed markdown reports with case breakdowns by severity, product, and status
 - 🤖 **AI-Powered Insights**: Use any OpenAI-compatible LLM (vLLM, Ollama, OpenAI, etc.) to identify trends, common issues, and business impacts
+- 📋 **Google Sheets**: Optional `gsheet_update` integration to write JSON analysis into a shared spreadsheet
 - 🏠 **Local or Cloud LLMs**: Deploy LLMs locally with vLLM/Ollama for privacy, or use cloud APIs like OpenAI
 - 🔐 **Secure Authentication**: OAuth 2.0 via Red Hat SSO with offline token support
 - 🔒 **Credential Protection**: Support for both environment variables and Ansible Vault encryption
@@ -77,35 +78,31 @@ pip install -r requirements.txt
 
 ## Usage
 
-### Basic Usage
+See [docs/EXAMPLES.md](docs/EXAMPLES.md) for detailed examples and [docs/QUICKSTART.md](docs/QUICKSTART.md) for a five-minute setup.
 
-Analyze support cases for one or more customer accounts:
+### Basic usage
 
 ```bash
-ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=2024-01-01"
+cp vars/accounts.example.yml vars/accounts.yml
+# edit vars/accounts.yml
+
+ansible-playbook analyze_support_cases.yml -e @vars/accounts.yml
 ```
 
-### Multiple Accounts
+### Multiple accounts
 
-Analyze multiple customer accounts in a single run:
+Define `support_case_accounts` in `vars/accounts.yml` (one playbook run processes each entry). See `vars/accounts.example.yml`.
 
-```bash
-ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456','789012','345678']" \
-  -e "activity_date=2024-01-01"
-```
+### Google Sheets output
 
-### Custom Output File
+Push JSON reports into a shared spreadsheet with a Google service account. See [docs/GSUITE_QUICKSTART.md](docs/GSUITE_QUICKSTART.md).
 
-Specify a custom output location:
+### Markdown / PDF reports
 
 ```bash
 ansible-playbook analyze_support_cases.yml \
-  -e "customer_account_ids=['123456']" \
-  -e "activity_date=2024-01-01" \
-  -e "output_file=reports/q4_2024_summary.md"
+  -e @vars/accounts.yml \
+  --tags pdf
 ```
 
 ### With Vault Password

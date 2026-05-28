@@ -1,2 +1,10 @@
-support_case_account_name: Parasol
-support_case_account_ids: ['12345678']
+---
+# Optional extra vars. Prefer vars/accounts.yml for account lists (see accounts.example.yml).
+
+# Legacy single-account (still supported if support_case_accounts is not set):
+# support_case_account_name: Parasol
+# support_case_account_ids: ['12345678']
+
+# Case / product filters (override group_vars/all/vars.yml defaults):
+# case_status_filter: open
+# support_case_products: ["Red Hat Ansible Automation Platform"]
