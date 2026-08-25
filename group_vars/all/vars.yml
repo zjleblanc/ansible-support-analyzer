@@ -30,3 +30,9 @@ default_activity_date: "{{ (now().replace(month=((now().month - 7) % 12 + 1), ye
 gsheet_sheet: "{{ lookup('env', 'GSHEET_SHEET') | default('Accounts', true) }}"
 gsheet_lookup_column: "{{ lookup('env', 'GSHEET_LOOKUP_COLUMN') | default('K', true) }}"
 gsheet_update_column: "{{ lookup('env', 'GSHEET_UPDATE_COLUMN') | default('O', true) }}"
+
+# When the rendered report exceeds the Google Sheets 50,000-character single-cell
+# limit, gsheet_update progressively trims lower-priority data before writing.
+# Cases for these products are preserved longest.
+gsheet_truncate_priority_products:
+  - "Red Hat Ansible Automation Platform"

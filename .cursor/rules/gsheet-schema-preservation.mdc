@@ -1,0 +1,22 @@
+---
+description: Ensure JSON schema consistency for Google Sheets reports
+globs: library/gsheet_update.py, templates/report.json.j2
+alwaysApply: false
+---
+
+# JSON Schema Preservation for Google Sheets
+
+Downstream applications consume the JSON report written to Google Sheets cells. The schema must remain identical even when data is truncated to fit the 50,000-character cell limit.
+
+## Rules
+
+- **Never delete keys**: If a field is too large, shorten its value (e.g., truncate a string with an ellipsis). Never use `pop()` or `del` on keys in the report object.
+- **Never remove array elements**: Array lengths must stay consistent with their related count fields (e.g., `active_cases`). Truncate values within array items instead of removing the items.
+- **Never add new top-level keys**: Do not inject metadata like `_truncated` into the JSON payload itself. Surface such information in the Ansible module result only.
+- **Fail fast**: If a payload cannot fit under the limit after shortening all trimmable values to their minimums, fail the task rather than emitting schema-inconsistent or malformed data.
+
+## Truncation Priorities
+
+1. Shorten text for non-priority products (summaries, descriptions) first.
+2. Shorten text for priority products (e.g., "Red Hat Ansible Automation Platform") next.
+3. Shorten report-level text (e.g., AI insights summary) last.

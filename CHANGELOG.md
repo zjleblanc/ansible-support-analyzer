@@ -2,6 +2,19 @@
 
 All notable changes to the Ansible Support Analyzer project will be documented in this file.
 
+## [1.5.0] - 2026-08-25
+
+### Added
+- **Smart JSON truncation**: The `gsheet_update` module now proactively shortens text fields (descriptions and summaries) to fit the Google Sheets 50,000-character single-cell limit.
+- **Schema-safe implementation**: Truncation only modifies string values; it never deletes keys, removes array elements, or adds new metadata to the JSON payload, ensuring downstream consumers aren't broken.
+- **Priority-aware trimming**: Case data for specific products (defaulting to "Red Hat Ansible Automation Platform") is preserved longest during the truncation cascade.
+- **Truncation metadata**: Module returns `truncated` (bool), `original_chars` (int), and `final_chars` (int) to the Ansible result for visibility.
+- **New module parameters**: Added `truncate`, `truncate_priority_products`, and `max_cell_chars` to the `gsheet_update` module for fine-grained control.
+- **Centrally managed priority**: `gsheet_truncate_priority_products` variable added to `group_vars/all/vars.yml`.
+
+### Changed
+- **Truncation warnings**: The report generation workflow now includes a warning task that triggers when a Google Sheets report has been shortened, directing users to the full Markdown/PDF reports.
+
 ## [1.4.0] - 2026-05-28
 
 ### Added

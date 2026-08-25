@@ -141,6 +141,20 @@
     lookup_value: "{{ gsheet_lookup_value }}"
     update_column: "{{ gsheet_update_column }}"
     update_value: "{{ lookup('template', 'templates/report.json.j2') }}"
+    truncate_priority_products: "{{ gsheet_truncate_priority_products }}"
+  register: r_gsheet_update
+  tags: [ai,json]
+
+- name: Warn when report data was truncated for Google Sheets | {{ account.name }}
+  when: r_gsheet_update.truncated | default(false)
+  ansible.builtin.debug:
+    msg: >-
+      Report for {{ support_case_account_name }} was shortened from
+      {{ r_gsheet_update.original_chars }} to {{ r_gsheet_update.final_chars }}
+      characters to fit the Google Sheets cell limit. Case descriptions and
+      summaries for non-priority products (see gsheet_truncate_priority_products)
+      were shortened first; the JSON schema is unchanged, and the
+      markdown/PDF report (--tags pdf) still contains the full data.
   tags: [ai,json]
 
 - name: Clean up temporary file | json | {{ account.name }}
