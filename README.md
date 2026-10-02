@@ -42,7 +42,7 @@ pip install -r requirements.txt
 3. **Configure credentials** (choose one method):
 
    **Option A: Environment Variables (Recommended for CI/CD)**
-   
+
    **For local vLLM:**
    ```bash
    export REDHAT_OFFLINE_TOKEN="your-redhat-offline-token"
@@ -50,7 +50,7 @@ pip install -r requirements.txt
    export LLM_API_BASE_URL="http://localhost:8000/v1"
    export LLM_MODEL="meta-llama/Llama-2-70b-chat-hf"
    ```
-   
+
    **For OpenAI:**
    ```bash
    export REDHAT_OFFLINE_TOKEN="your-redhat-offline-token"
@@ -58,7 +58,7 @@ pip install -r requirements.txt
    export LLM_API_BASE_URL="https://api.openai.com/v1"
    export LLM_MODEL="gpt-4"
    ```
-   
+
    To get your Red Hat offline token:
    - Visit https://access.redhat.com/management/api
    - Click "Generate Token" to create an offline token
@@ -68,10 +68,10 @@ pip install -r requirements.txt
    ```bash
    # Create vault file from example
    cp group_vars/all/vault.yml.example group_vars/all/vault.yml
-   
+
    # Edit with your credentials
    ansible-vault edit group_vars/all/vault.yml
-   
+
    # Create vault password file (optional)
    echo "your-vault-password" > ~/.ansible/vault_pass.txt
    chmod 600 ~/.ansible/vault_pass.txt

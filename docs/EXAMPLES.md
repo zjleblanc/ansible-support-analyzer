@@ -413,4 +413,3 @@ For more information:
 - Quick start: [QUICKSTART.md](QUICKSTART.md)
 - Google Sheets: [GSUITE_QUICKSTART.md](GSUITE_QUICKSTART.md)
 - Open an issue for bugs or questions
-

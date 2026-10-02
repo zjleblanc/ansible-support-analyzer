@@ -114,12 +114,12 @@ Per-account `gsheet_lookup_value` defaults to the account `name` when not set on
    ```bash
    # Old (v1.2.0)
    export GEMINI_API_KEY="your-gemini-key"
-   
+
    # New (v1.3.0) - Local vLLM
    export LLM_API_KEY="EMPTY"
    export LLM_API_BASE_URL="http://localhost:8000/v1"
    export LLM_MODEL="meta-llama/Llama-2-70b-chat-hf"
-   
+
    # Or for OpenAI
    export LLM_API_KEY="sk-..."
    export LLM_API_BASE_URL="https://api.openai.com/v1"
@@ -130,12 +130,12 @@ Per-account `gsheet_lookup_value` defaults to the account `name` when not set on
    ```bash
    ansible-vault edit group_vars/all/vault.yml
    ```
-   
+
    Replace:
    ```yaml
    # Old
    vault_gemini_api_key: "your-gemini-key"
-   
+
    # New
    vault_llm_api_key: "EMPTY"  # or your API key
    vault_llm_api_base_url: "http://localhost:8000/v1"
@@ -153,7 +153,7 @@ Per-account `gsheet_lookup_value` defaults to the account `name` when not set on
    python -m vllm.entrypoints.openai.api_server \
      --model meta-llama/Llama-2-70b-chat-hf \
      --port 8000
-   
+
    # Or for Ollama
    ollama serve
    ollama pull llama2
@@ -231,7 +231,7 @@ Per-account `gsheet_lookup_value` defaults to the account `name` when not set on
    # Old (v1.0.0)
    export REDHAT_API_USERNAME="your-username"
    export REDHAT_API_PASSWORD="your-password"
-   
+
    # New (v1.1.0)
    export REDHAT_OFFLINE_TOKEN="your-offline-token"
    ```
@@ -240,13 +240,13 @@ Per-account `gsheet_lookup_value` defaults to the account `name` when not set on
    ```bash
    ansible-vault edit group_vars/all/vault.yml
    ```
-   
+
    Replace:
    ```yaml
    # Old
    vault_redhat_api_username: "username"
    vault_redhat_api_password: "password"
-   
+
    # New
    vault_redhat_offline_token: "offline-token"
    ```
@@ -285,4 +285,3 @@ Per-account `gsheet_lookup_value` defaults to the account `name` when not set on
 - Ansible Vault support for credentials
 - Comprehensive documentation
 - 20+ usage examples
-

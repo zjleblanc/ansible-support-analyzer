@@ -423,6 +423,5 @@ ansible-playbook analyze_support_cases.yml \
 
 ---
 
-**Version**: 1.3.0  
+**Version**: 1.3.0
 **Status**: ✅ Tested with vLLM, Ollama, and OpenAI
-

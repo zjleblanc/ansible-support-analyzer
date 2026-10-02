@@ -1,0 +1,43 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        # --unsafe: allow custom YAML tags (e.g. Ansible's `!unsafe`) that
+        # check-yaml's default safe loader doesn't recognize.
+        args: ['--unsafe']
+      - id: check-added-large-files
+
+  - repo: https://github.com/ansible/ansible-lint
+    rev: v26.9.0
+    hooks:
+      - id: ansible-lint
+        files: \.(yaml|yml)$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.10
+    hooks:
+      # Using ruff-format instead of autopep8/black: autopep8 depends on
+      # `lib2to3`, which was removed in Python 3.13+, so it crashes on
+      # modern interpreters. Scoped to library/ (the Ansible modules).
+      - id: ruff-format
+        files: ^library/.*\.py$
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.1.1
+    hooks:
+      # --max-line-length=160: matches ansible-lint's own default; avoids
+      # flagging long lines inside module DOCUMENTATION/EXAMPLES strings
+      # and LLM prompt text that shouldn't be reflowed.
+      # --extend-ignore=E402: Ansible modules intentionally place imports
+      # after the DOCUMENTATION/EXAMPLES/RETURN docstrings.
+      - id: flake8
+        args: ["--max-line-length=160", "--extend-ignore=E402"]
+        files: ^library/.*\.py$
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.0
+    hooks:
+      - id: gitleaks

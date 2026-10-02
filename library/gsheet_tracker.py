@@ -5,9 +5,10 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 from __future__ import absolute_import, division, print_function
+
 __metaclass__ = type
 
-DOCUMENTATION = r'''
+DOCUMENTATION = r"""
 ---
 module: gsheet_tracker
 short_description: Track active support cases in a dedicated Google Sheet tab and diff against the previous run
@@ -64,9 +65,9 @@ options:
         type: list
         elements: dict
         default: []
-'''
+"""
 
-EXAMPLES = r'''
+EXAMPLES = r"""
 - name: Record active cases and compute the diff since the last run
   gsheet_tracker:
     sheet: "Case Tracker"
@@ -90,9 +91,9 @@ EXAMPLES = r'''
     account_name: "Southwest Airlines"
     cases: "{{ current_cases }}"
   register: tracker_result
-'''
+"""
 
-RETURN = r'''
+RETURN = r"""
 changed:
     description: Whether the sheet was modified (always true unless check_mode, since last_seen is refreshed).
     type: bool
@@ -134,7 +135,7 @@ sheet:
     description: The worksheet tab name used.
     type: str
     returned: success
-'''
+"""
 
 import os
 
@@ -146,6 +147,7 @@ try:
     from google.oauth2.service_account import Credentials
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
+
     HAS_GOOGLE = True
 except ImportError:
     HAS_GOOGLE = False
@@ -158,12 +160,28 @@ VALUE_INPUT_OPTION = "USER_ENTERED"
 # Column layout owned by this module. "account" is always column A so a single
 # tab can safely hold rows for many accounts.
 HEADER_DISPLAY = [
-    "Account", "Case ID", "Summary", "Product", "Severity",
-    "Status", "Owner", "Created", "Last Modified", "Last Seen",
+    "Account",
+    "Case ID",
+    "Summary",
+    "Product",
+    "Severity",
+    "Status",
+    "Owner",
+    "Created",
+    "Last Modified",
+    "Last Seen",
 ]
 HEADER_KEYS = [
-    "account", "case_id", "summary", "product", "severity",
-    "status", "owner", "created", "last_modified", "last_seen",
+    "account",
+    "case_id",
+    "summary",
+    "product",
+    "severity",
+    "status",
+    "owner",
+    "created",
+    "last_modified",
+    "last_seen",
 ]
 
 # Fields whose change on an otherwise-still-open case is worth surfacing in a
@@ -171,8 +189,14 @@ HEADER_KEYS = [
 TRACKED_CHANGE_FIELDS = ["severity", "status", "owner"]
 
 CASE_INPUT_KEYS = [
-    "case_id", "summary", "product", "severity",
-    "status", "owner", "created", "last_modified",
+    "case_id",
+    "summary",
+    "product",
+    "severity",
+    "status",
+    "owner",
+    "created",
+    "last_modified",
 ]
 
 
@@ -270,12 +294,14 @@ def diff_cases(previous_by_id, current_by_id):
             if (old_value or "") != (new_value or ""):
                 changes[field] = {"old": old_value, "new": new_value}
         if changes:
-            updated_cases.append({
-                "case_id": cid,
-                "summary": current_case.get("summary", ""),
-                "product": current_case.get("product", ""),
-                "changes": changes,
-            })
+            updated_cases.append(
+                {
+                    "case_id": cid,
+                    "summary": current_case.get("summary", ""),
+                    "product": current_case.get("product", ""),
+                    "changes": changes,
+                }
+            )
 
     return new_cases, closed_cases, updated_cases
 
@@ -345,7 +371,9 @@ def main():
     data_rows = [pad_row(row, len(HEADER_DISPLAY)) for row in existing_values[1:]]
 
     other_account_rows = [row for row in data_rows if row[0] != account_name]
-    previous_account_rows = [row_to_dict(row) for row in data_rows if row[0] == account_name]
+    previous_account_rows = [
+        row_to_dict(row) for row in data_rows if row[0] == account_name
+    ]
     previous_by_id = {
         row["case_id"]: row for row in previous_account_rows if row.get("case_id")
     }

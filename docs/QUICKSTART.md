@@ -196,4 +196,3 @@ See [GSUITE_QUICKSTART.md](GSUITE_QUICKSTART.md) for service account and spreads
 ## Support
 
 For issues or questions, please refer to the main [README.md](README.md) or open an issue in the repository.
-

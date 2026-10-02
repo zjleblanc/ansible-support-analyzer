@@ -21,19 +21,19 @@ if (!inputHtmlPath || !outputPdfPath) {
 
         // Resolve the input path to an absolute file URL for Puppeteer
         const absoluteHtmlPath = path.resolve(inputHtmlPath);
-        
+
         // Go to the local HTML file
         await page.goto(`file://${absoluteHtmlPath}`, { waitUntil: 'networkidle0' });
 
         // Generate the PDF
-        await page.pdf({ 
-            path: outputPdfPath, 
+        await page.pdf({
+            path: outputPdfPath,
             format: 'A4',
             printBackground: true, // Ensure background colors/images are included
         });
 
         console.log(`Successfully generated PDF: ${outputPdfPath}`);
-        
+
     } catch (error) {
         console.error('An error occurred during PDF generation:', error);
         process.exit(1);

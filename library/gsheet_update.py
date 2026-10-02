@@ -5,9 +5,10 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 from __future__ import absolute_import, division, print_function
+
 __metaclass__ = type
 
-DOCUMENTATION = r'''
+DOCUMENTATION = r"""
 ---
 module: gsheet_update
 short_description: Update a Google Spreadsheet cell by row lookup
@@ -88,9 +89,9 @@ options:
               the Google Sheets 50000-character single-cell limit to leave margin.
         type: int
         default: 49500
-'''
+"""
 
-EXAMPLES = r'''
+EXAMPLES = r"""
 - name: Update case count for a customer row (uses GOOGLE_SA_CRED_PATH and GOOGLE_SHEET_ID)
   gsheet_update:
     sheet: Customers
@@ -108,9 +109,9 @@ EXAMPLES = r'''
     update_column: E
     update_value: "Closed"
   register: gsheet_result
-'''
+"""
 
-RETURN = r'''
+RETURN = r"""
 row:
     description: 1-based row number that was updated.
     type: int
@@ -142,7 +143,7 @@ final_chars:
     description: Character length of the serialized value actually written.
     type: int
     returned: when truncated
-'''
+"""
 
 import json
 import os
@@ -154,6 +155,7 @@ try:
     from google.oauth2.service_account import Credentials
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
+
     HAS_GOOGLE = True
 except ImportError:
     HAS_GOOGLE = False
@@ -471,9 +473,7 @@ def main():
 
     try:
         service = build("sheets", "v4", credentials=creds)
-        column_values = get_column_values(
-            service, gsheet_id, sheet, lookup_column
-        )
+        column_values = get_column_values(service, gsheet_id, sheet, lookup_column)
     except HttpError as exc:
         module.fail_json(msg=f"Google Sheets API error: {exc}")
     except Exception as exc:
@@ -525,7 +525,11 @@ def main():
             row=row,
             updated_range=target_range,
             truncated=truncated,
-            **({"original_chars": original_chars, "final_chars": final_chars} if truncated else {}),
+            **(
+                {"original_chars": original_chars, "final_chars": final_chars}
+                if truncated
+                else {}
+            ),
             check_mode=True,
         )
 
@@ -544,7 +548,11 @@ def main():
         updated_range=result.get("updatedRange", target_range),
         updated_cells=result.get("updatedCells", 1),
         truncated=truncated,
-        **({"original_chars": original_chars, "final_chars": final_chars} if truncated else {}),
+        **(
+            {"original_chars": original_chars, "final_chars": final_chars}
+            if truncated
+            else {}
+        ),
     )
 
 
