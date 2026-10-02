@@ -2,6 +2,34 @@
 
 All notable changes to the Ansible Support Analyzer project will be documented in this file.
 
+## [1.6.0] - 2026-10-02
+
+### Added
+- **`track_support_cases.yml`**: New cadence-friendly playbook that queries the same
+  `support_case_accounts`, records active cases in a dedicated Google Sheet tab, diffs
+  against the previously recorded state, and emails a change summary.
+- **`gsheet_tracker` module** (`library/gsheet_tracker.py`): Owns a worksheet tab end-to-end —
+  reads prior rows for an account, diffs them against the current case list (new / closed /
+  updated severity, status, owner), rewrites that account's rows, and returns the diff. The
+  tab is self-managed (auto-created header, fixed column layout) and intentionally independent
+  of the `Accounts` tab / lookup-column convention used by `analyze_support_cases.yml`.
+- **`tasks/track_account.yml`**: Per-account fetch + normalize + track workflow, mirroring
+  `tasks/analyze_account.yml`'s structure.
+- **`templates/tracking_email.html.j2`**: HTML email summarizing new/closed/updated cases
+  across all tracked accounts, sent via `community.general.mail`.
+- **New variables** in `group_vars/all/vars.yml`: `tracker_gsheet_sheet`, `tracker_smtp_host`,
+  `tracker_smtp_port`, `tracker_smtp_username`, `tracker_smtp_password`, `tracker_smtp_secure`,
+  `tracker_email_from`, `tracker_email_to`, `tracker_email_subject`,
+  `tracker_notify_on_no_changes`.
+- **Ansible Automation Platform**: `support_analyzer.cred.yml` extended with tracker sheet and
+  SMTP fields/injectors (`TRACKER_*` environment variables).
+- **Documentation**: New "Tracking Support Case Changes" section in
+  [docs/EXAMPLES.md](docs/EXAMPLES.md).
+
+### Dependencies
+- Requires the `community.general` collection for `community.general.mail`
+  (`ansible-galaxy collection install community.general`).
+
 ## [1.5.0] - 2026-08-25
 
 ### Added

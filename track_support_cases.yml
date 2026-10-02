@@ -1,0 +1,125 @@
+---
+- name: Track Red Hat Support Cases and Notify on Changes
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    # Provide one or more accounts via support_case_accounts (see vars/accounts.example.yml),
+    # or set support_case_account_name + support_case_account_ids for a single account.
+
+    # Default values that can be overridden with -e
+    activity_date: "{{ default_activity_date }}"
+    secure_logging: true
+    tracking_results: []
+
+  tasks:
+    - name: Check API and notification credentials
+      ansible.builtin.assert:
+        that:
+          - redhat_offline_token is defined
+          - redhat_offline_token | length > 0
+          - lookup('env', 'GOOGLE_SHEET_ID') | length > 0 or gsheet_id is defined
+          - tracker_smtp_host is defined
+          - tracker_smtp_host | length > 0
+          - tracker_email_from is defined
+          - tracker_email_from | length > 0
+          - tracker_email_to is defined
+          - tracker_email_to | length > 0
+        fail_msg: |
+          Tracking credentials not configured. Please ensure:
+          1. REDHAT_OFFLINE_TOKEN is set (see group_vars/all/vault.yml or environment).
+          2. GOOGLE_SA_CRED_PATH and GOOGLE_SHEET_ID are set for the Google Sheets tracker.
+          3. SMTP settings are configured: TRACKER_SMTP_HOST, TRACKER_EMAIL_FROM,
+             and TRACKER_EMAIL_TO (comma-separated or list).
+
+          To get your Red Hat offline token:
+          - Visit https://access.redhat.com/management/api
+          - Click "Generate Token" to get an offline token
+          - This offline token will be exchanged for an access token via Red Hat SSO
+        success_msg: "Tracking credentials validated"
+      tags: [always]
+
+    - name: Build account list from legacy single-account variables
+      when: support_case_accounts is not defined
+      ansible.builtin.set_fact:
+        support_case_accounts:
+          - name: "{{ support_case_account_name }}"
+            ids: "{{ support_case_account_ids }}"
+      tags: [always]
+
+    - name: Validate account configuration
+      ansible.builtin.assert:
+        that:
+          - support_case_accounts is defined
+          - support_case_accounts | length > 0
+          - support_case_accounts | map(attribute='name') | list | length == support_case_accounts | length
+          - support_case_accounts | map(attribute='ids') | list | length == support_case_accounts | length
+        fail_msg: |
+          No accounts configured. Provide support_case_accounts (list of name/ids dicts)
+          or support_case_account_name + support_case_account_ids for a single account.
+          See vars/accounts.example.yml.
+        success_msg: "Tracking {{ support_case_accounts | length }} account configuration(s)"
+      tags: [always]
+
+    - name: Exchange offline token for access token via Red Hat SSO
+      ansible.builtin.uri:
+        url: "{{ redhat_sso_url }}"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          grant_type: refresh_token
+          client_id: rhsm-api
+          refresh_token: "{{ redhat_offline_token }}"
+        status_code: 200
+        timeout: 30
+      register: r_sso_token
+      no_log: "{{ secure_logging }}"
+      tags: [always, auth]
+
+    - name: Set access token from SSO response
+      ansible.builtin.set_fact:
+        redhat_access_token: "{{ r_sso_token.json.access_token }}"
+      no_log: "{{ secure_logging }}"
+      tags: [always, auth]
+
+    - name: Track each account configuration
+      loop: "{{ support_case_accounts }}"
+      loop_control:
+        loop_var: account
+        label: "{{ account.name }}"
+      ansible.builtin.include_tasks: tasks/track_account.yml
+      tags: [always]
+
+    - name: Determine whether any account has changes
+      ansible.builtin.set_fact:
+        tracking_has_any_changes: "{{ tracking_results | selectattr('has_changes') | list | length > 0 }}"
+      tags: [always]
+
+    - name: Send change notification email
+      when: tracking_has_any_changes or tracker_notify_on_no_changes
+      community.general.mail:
+        host: "{{ tracker_smtp_host }}"
+        port: "{{ tracker_smtp_port }}"
+        username: "{{ tracker_smtp_username | default(omit) }}"
+        password: "{{ tracker_smtp_password | default(omit) }}"
+        secure: "{{ tracker_smtp_secure | default(omit) }}"
+        from: "{{ tracker_email_from }}"
+        to: "{{ tracker_email_to }}"
+        subject: >-
+          {{ tracker_email_subject }}{{ '' if tracking_has_any_changes else ' (no changes)' }}
+        subtype: html
+        body: "{{ lookup('template', 'templates/tracking_email.html.j2') }}"
+      no_log: "{{ secure_logging }}"
+      tags: [always, notify]
+
+    - name: Display tracking run summary
+      ansible.builtin.debug:
+        msg:
+          - "============================================"
+          - "Support Case Tracking Run Complete!"
+          - "============================================"
+          - "Accounts Tracked: {{ tracking_results | length }}"
+          - "Accounts With Changes: {{ tracking_results | selectattr('has_changes') | list | length }}"
+          - "Notification Sent: {{ tracking_has_any_changes or tracker_notify_on_no_changes }}"
+          - "============================================"
+      tags: [always]

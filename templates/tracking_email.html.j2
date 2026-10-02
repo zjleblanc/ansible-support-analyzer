@@ -1,0 +1,126 @@
+{# HTML email body for track_support_cases.yml — relies on `tracking_results` #}
+{# (list of per-account diff dicts set by tasks/track_account.yml) and the    #}
+{# `tracking_has_any_changes` flag set by track_support_cases.yml.           #}
+{%- set total_new_count = tracking_results | map(attribute='new_cases') | map('length') | sum -%}
+{%- set total_closed_count = tracking_results | map(attribute='closed_cases') | map('length') | sum -%}
+{%- set total_updated_count = tracking_results | map(attribute='updated_cases') | map('length') | sum -%}
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>{{ tracker_email_subject }}</title>
+</head>
+<body style="font-family: Arial, Helvetica, sans-serif; color: #1a1a1a; margin: 0; padding: 0; background-color: #f4f4f4;">
+<div style="max-width: 760px; margin: 0 auto; padding: 24px; background-color: #ffffff;">
+
+  <h1 style="font-size: 20px; margin: 0 0 4px;">Support Case Tracker</h1>
+  <p style="color: #666; margin: 0 0 16px;">Run completed {{ now(utc=True, fmt='%Y-%m-%d %H:%M UTC') }}</p>
+
+  {% if not tracking_has_any_changes %}
+  <p style="background:#f0f7ff; border:1px solid #cfe3fc; padding:12px; border-radius:4px; color:#1a4480;">
+    No changes detected across any tracked account since the last run.
+  </p>
+  {% endif %}
+
+  <table style="width:100%; border-collapse: collapse; margin: 8px 0 24px; font-size:13px;">
+    <tr style="background:#f0f0f0; text-align:left;">
+      <th style="padding:8px; border-bottom:2px solid #ddd;">New</th>
+      <th style="padding:8px; border-bottom:2px solid #ddd;">Closed</th>
+      <th style="padding:8px; border-bottom:2px solid #ddd;">Updated</th>
+      <th style="padding:8px; border-bottom:2px solid #ddd;">Accounts Tracked</th>
+    </tr>
+    <tr>
+      <td style="padding:8px;">{{ total_new_count }}</td>
+      <td style="padding:8px;">{{ total_closed_count }}</td>
+      <td style="padding:8px;">{{ total_updated_count }}</td>
+      <td style="padding:8px;">{{ tracking_results | length }}</td>
+    </tr>
+  </table>
+
+  {% for result in tracking_results %}
+  <div style="margin-top:28px; border-top: 2px solid #e0e0e0; padding-top: 16px;">
+    <h2 style="font-size:16px; margin:0 0 4px;">{{ result.account }}</h2>
+    <p style="color:#666; margin:0 0 12px;">
+      Active cases: {{ result.total_current }} (previously {{ result.total_previous }})
+    </p>
+
+    {% if not result.has_changes %}
+    <p style="color:#888; font-style: italic; margin:0;">No changes since the last run.</p>
+    {% endif %}
+
+    {% if result.new_cases | length > 0 %}
+    <h3 style="font-size:14px; color:#1a7f37; margin:16px 0 8px;">New Cases ({{ result.new_cases | length }})</h3>
+    <table style="width:100%; border-collapse: collapse; font-size:13px;">
+      <tr style="background:#f0f0f0; text-align:left;">
+        <th style="padding:6px; border-bottom:1px solid #ddd;">Case</th>
+        <th style="padding:6px; border-bottom:1px solid #ddd;">Summary</th>
+        <th style="padding:6px; border-bottom:1px solid #ddd;">Product</th>
+        <th style="padding:6px; border-bottom:1px solid #ddd;">Severity</th>
+        <th style="padding:6px; border-bottom:1px solid #ddd;">Status</th>
+      </tr>
+      {% for case in result.new_cases %}
+      <tr>
+        <td style="padding:6px; border-bottom:1px solid #eee;">{{ case.case_id }}</td>
+        <td style="padding:6px; border-bottom:1px solid #eee;">{{ case.summary | default('', true) | truncate(80) }}</td>
+        <td style="padding:6px; border-bottom:1px solid #eee;">{{ case.product }}</td>
+        <td style="padding:6px; border-bottom:1px solid #eee;">{{ case.severity }}</td>
+        <td style="padding:6px; border-bottom:1px solid #eee;">{{ case.status }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if result.closed_cases | length > 0 %}
+    <h3 style="font-size:14px; color:#9a6700; margin:16px 0 8px;">Closed / No Longer Active ({{ result.closed_cases | length }})</h3>
+    <table style="width:100%; border-collapse: collapse; font-size:13px;">
+      <tr style="background:#f0f0f0; text-align:left;">
+        <th style="padding:6px; border-bottom:1px solid #ddd;">Case</th>
+        <th style="padding:6px; border-bottom:1px solid #ddd;">Summary</th>
+        <th style="padding:6px; border-bottom:1px solid #ddd;">Product</th>
+        <th style="padding:6px; border-bottom:1px solid #ddd;">Severity</th>
+        <th style="padding:6px; border-bottom:1px solid #ddd;">Last Status</th>
+      </tr>
+      {% for case in result.closed_cases %}
+      <tr>
+        <td style="padding:6px; border-bottom:1px solid #eee;">{{ case.case_id }}</td>
+        <td style="padding:6px; border-bottom:1px solid #eee;">{{ case.summary | default('', true) | truncate(80) }}</td>
+        <td style="padding:6px; border-bottom:1px solid #eee;">{{ case.product }}</td>
+        <td style="padding:6px; border-bottom:1px solid #eee;">{{ case.severity }}</td>
+        <td style="padding:6px; border-bottom:1px solid #eee;">{{ case.status }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if result.updated_cases | length > 0 %}
+    <h3 style="font-size:14px; color:#9a3412; margin:16px 0 8px;">Updated Cases ({{ result.updated_cases | length }})</h3>
+    <table style="width:100%; border-collapse: collapse; font-size:13px;">
+      <tr style="background:#f0f0f0; text-align:left;">
+        <th style="padding:6px; border-bottom:1px solid #ddd;">Case</th>
+        <th style="padding:6px; border-bottom:1px solid #ddd;">Summary</th>
+        <th style="padding:6px; border-bottom:1px solid #ddd;">Changes</th>
+      </tr>
+      {% for case in result.updated_cases %}
+      <tr>
+        <td style="padding:6px; border-bottom:1px solid #eee;">{{ case.case_id }}</td>
+        <td style="padding:6px; border-bottom:1px solid #eee;">{{ case.summary | default('', true) | truncate(80) }}</td>
+        <td style="padding:6px; border-bottom:1px solid #eee;">
+          {% for field, change in case.changes.items() %}
+          <div>{{ field | capitalize }}: {{ change.old | default('(none)', true) }} &rarr; {{ change.new | default('(none)', true) }}</div>
+          {% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <p style="margin-top:32px; color:#999; font-size:12px;">
+    Generated by Ansible Support Analyzer (track_support_cases.yml). Active case state is
+    recorded in the &quot;{{ tracker_gsheet_sheet }}&quot; worksheet tab.
+  </p>
+
+</div>
+</body>
+</html>

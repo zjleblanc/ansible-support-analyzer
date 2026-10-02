@@ -329,6 +329,83 @@ ansible-playbook analyze_support_cases.yml \
 - **LLM quotas**: Monitor your LLM provider when analyzing large case volumes
 - **Google Sheets**: See [GSUITE_QUICKSTART.md](GSUITE_QUICKSTART.md) for service account setup
 
+## Tracking Support Case Changes (`track_support_cases.yml`)
+
+`track_support_cases.yml` is a separate, lightweight playbook designed to run on a cadence
+(cron, AAP schedule, etc.). Each run:
+
+1. Queries the same `support_case_accounts` for active support cases.
+2. Records them as individual rows in a **dedicated worksheet tab** that the `gsheet_tracker`
+   module owns completely (header row and all data rows) — it is *not* the `Accounts` tab used
+   by `analyze_support_cases.yml`, and does not rely on that playbook's lookup/update column
+   configuration. Treat it as its own green-field tab (default name: `Case Tracker`).
+3. Diffs the current cases against what was recorded on the previous run (new / closed /
+   changed severity, status, or owner).
+4. Emails a summary of the diff via `community.general.mail` — only when something changed,
+   unless `tracker_notify_on_no_changes: true`.
+
+No LLM is required for this playbook.
+
+### Setup
+
+```bash
+# Collection required for the notification email
+ansible-galaxy collection install community.general
+
+# Reuse the same Red Hat + Google Sheets credentials as analyze_support_cases.yml
+export REDHAT_OFFLINE_TOKEN="your-redhat-offline-token"
+export GOOGLE_SA_CRED_PATH="$HOME/.config/support-analyzer/google-sa.json"
+export GOOGLE_SHEET_ID="your-spreadsheet-id"
+
+# Optional: override the dedicated tracker tab name (default: "Case Tracker")
+export TRACKER_GSHEET_SHEET="Case Tracker"
+
+# SMTP for the change-notification email
+export TRACKER_SMTP_HOST="smtp.example.com"
+export TRACKER_SMTP_PORT="587"
+export TRACKER_SMTP_USERNAME="notifier@example.com"   # optional
+export TRACKER_SMTP_PASSWORD="..."                     # optional
+export TRACKER_SMTP_SECURE="starttls"                  # optional: try|always|never|starttls
+export TRACKER_EMAIL_FROM="support-tracker@example.com"
+export TRACKER_EMAIL_TO="team@example.com,oncall@example.com"
+```
+
+### Run once
+
+```bash
+ansible-playbook track_support_cases.yml -e @vars/accounts.yml
+```
+
+### Run on a cadence (cron)
+
+```bash
+# Every 4 hours
+0 */4 * * * cd /path/to/ansible-support-analyzer && /usr/bin/ansible-playbook track_support_cases.yml -e @vars/accounts.yml >> /var/log/ansible-case-tracker.log 2>&1
+```
+
+### Always send a notification, even with no changes
+
+```bash
+ansible-playbook track_support_cases.yml \
+  -e @vars/accounts.yml \
+  -e tracker_notify_on_no_changes=true
+```
+
+### What gets written to the sheet
+
+Each run replaces the rows for a given account in the tracker tab (other accounts' rows are
+left untouched) with columns:
+
+`Account | Case ID | Summary | Product | Severity | Status | Owner | Created | Last Modified | Last Seen`
+
+### What the module returns per account
+
+The `gsheet_tracker` module (see [library/gsheet_tracker.py](../library/gsheet_tracker.py))
+returns `new_cases`, `closed_cases`, `updated_cases` (with before/after values for severity,
+status, and owner), plus `total_current` / `total_previous` counts — these drive both the
+email template ([templates/tracking_email.html.j2](../templates/tracking_email.html.j2)) and
+the per-account debug summary printed during the run.
+
 ## Getting Help
 
 For more information:

@@ -9,6 +9,7 @@ An Ansible automation project that fetches Red Hat support cases, filters by act
 - 📊 **Comprehensive Reports**: Generate detailed markdown reports with case breakdowns by severity, product, and status
 - 🤖 **AI-Powered Insights**: Use any OpenAI-compatible LLM (vLLM, Ollama, OpenAI, etc.) to identify trends, common issues, and business impacts
 - 📋 **Google Sheets**: Optional `gsheet_update` integration to write JSON analysis into a shared spreadsheet
+- 🔔 **Case Tracking & Alerts**: `track_support_cases.yml` runs on a cadence, records active cases in a dedicated Google Sheet tab, diffs against the previous run, and emails a change summary (see [docs/EXAMPLES.md](docs/EXAMPLES.md#tracking-support-case-changes-track_support_casesyml))
 - 🏠 **Local or Cloud LLMs**: Deploy LLMs locally with vLLM/Ollama for privacy, or use cloud APIs like OpenAI
 - 🔐 **Secure Authentication**: OAuth 2.0 via Red Hat SSO with offline token support
 - 🔒 **Credential Protection**: Support for both environment variables and Ansible Vault encryption

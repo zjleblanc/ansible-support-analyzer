@@ -1,0 +1,108 @@
+---
+- name: Set variables for current account | {{ account.name }}
+  ansible.builtin.set_fact:
+    support_case_account_name: "{{ account.name }}"
+    support_case_account_ids: "{{ account.ids }}"
+    activity_date: "{{ account.activity_date | default(activity_date) }}"
+  tags: [always]
+
+- name: Fetch support cases for each customer account | {{ account.name }}
+  loop: "{{ support_case_account_ids }}"
+  loop_control:
+    loop_var: account_id
+    label: "Account {{ account_id }}"
+  ansible.builtin.uri:
+    url: "{{ redhat_api_base_url }}/cases/filter"
+    method: POST
+    body:
+      accountNumber: "{{ account_id }}"
+    headers:
+      Accept: "application/json"
+      Authorization: "Bearer {{ redhat_access_token }}"
+    body_format: json
+    status_code: [200, 201]
+    timeout: "{{ redhat_api_timeout }}"
+  register: r_support_cases
+  ignore_errors: true
+  tags: [always, fetch]
+
+- name: Extract cases from API response | {{ account.name }}
+  ansible.builtin.set_fact:
+    all_cases: "{{ r_support_cases.results | json_query('[?json].json.cases[]') | default([], true) }}"
+  tags: [always, filter]
+
+- name: Report API fetch failures | {{ account.name }}
+  when: r_support_cases.results | rejectattr('json', 'defined') | list | length > 0
+  ansible.builtin.debug:
+    msg: >-
+      Warning: {{ r_support_cases.results | rejectattr('json', 'defined') | list | length }}
+      of {{ r_support_cases.results | length }} account API request(s) failed.
+      Proceeding with cases returned by successful requests.
+  tags: [always, filter]
+
+- name: Filter cases by activity date | {{ account.name }}
+  ansible.builtin.set_fact:
+    all_cases: >-
+      {{
+        all_cases
+        | selectattr('lastModifiedDate', 'defined')
+        | selectattr('lastModifiedDate', '>=', activity_date)
+        | list
+      }}
+  tags: [always, filter]
+
+- name: Note when no cases match activity filter | {{ account.name }}
+  when: all_cases | length == 0
+  ansible.builtin.debug:
+    msg: >-
+      No support cases with activity since {{ activity_date }} for {{ support_case_account_name }}.
+      The tracker will record zero active cases, which may surface prior cases as "closed".
+  tags: [always, filter]
+
+- name: Normalize cases for the tracker | {{ account.name }}
+  vars:
+    tracker_case_projection: >-
+      [].{case_id: caseNumber, summary: summary, product: product, severity: severity,
+      status: status, owner: owner, created: createdDate, last_modified: lastModifiedDate}
+  ansible.builtin.set_fact:
+    tracked_cases: "{{ all_cases | json_query(tracker_case_projection) | default([], true) }}"
+  tags: [always]
+
+- name: Record active cases and compute diff since last run | {{ account.name }}
+  gsheet_tracker:
+    gsheet_id: "{{ gsheet_id | default(omit) }}"
+    sheet: "{{ tracker_gsheet_sheet }}"
+    account_name: "{{ support_case_account_name }}"
+    cases: "{{ tracked_cases }}"
+  register: r_gsheet_tracker
+  tags: [always]
+
+- name: Build tracking entry | {{ account.name }}
+  ansible.builtin.set_fact:
+    _tracking_entry:
+      account: "{{ support_case_account_name }}"
+      total_current: "{{ r_gsheet_tracker.total_current }}"
+      total_previous: "{{ r_gsheet_tracker.total_previous }}"
+      has_changes: "{{ r_gsheet_tracker.has_changes }}"
+      new_cases: "{{ r_gsheet_tracker.new_cases }}"
+      closed_cases: "{{ r_gsheet_tracker.closed_cases }}"
+      updated_cases: "{{ r_gsheet_tracker.updated_cases }}"
+  tags: [always]
+
+- name: Accumulate tracking results across accounts | {{ account.name }}
+  ansible.builtin.set_fact:
+    tracking_results: "{{ (tracking_results | default([])) + [_tracking_entry] }}"
+  tags: [always]
+
+- name: Display tracking summary | {{ account.name }}
+  ansible.builtin.debug:
+    msg:
+      - "============================================"
+      - "Support Case Tracking Complete!"
+      - "============================================"
+      - "Account: {{ support_case_account_name }}"
+      - "Active Cases: {{ r_gsheet_tracker.total_current }} (previously: {{ r_gsheet_tracker.total_previous }})"
+      - "New: {{ r_gsheet_tracker.new_cases | length }} | Closed: {{ r_gsheet_tracker.closed_cases | length }}
+        | Updated: {{ r_gsheet_tracker.updated_cases | length }}"
+      - "============================================"
+  tags: [always]

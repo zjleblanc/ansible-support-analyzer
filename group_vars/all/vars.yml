@@ -36,3 +36,27 @@ gsheet_update_column: "{{ lookup('env', 'GSHEET_UPDATE_COLUMN') | default('O', t
 # Cases for these products are preserved longest.
 gsheet_truncate_priority_products:
   - "Red Hat Ansible Automation Platform"
+
+# Case tracking (track_support_cases.yml) — dedicated worksheet tab owned entirely
+# by the gsheet_tracker module (do not reuse the analyze playbook's Accounts tab).
+tracker_gsheet_sheet: "{{ lookup('env', 'TRACKER_GSHEET_SHEET') | default('Case Tracker', true) }}"
+
+# SMTP configuration for the change-notification email (community.general.mail).
+tracker_smtp_host: "{{ lookup('env', 'TRACKER_SMTP_HOST') | default('localhost', true) }}"
+tracker_smtp_port: "{{ lookup('env', 'TRACKER_SMTP_PORT') | default(25, true) | int }}"
+tracker_smtp_username: "{{ lookup('env', 'TRACKER_SMTP_USERNAME') | default(omit, true) }}"
+tracker_smtp_password: "{{ lookup('env', 'TRACKER_SMTP_PASSWORD') | default(omit, true) }}"
+tracker_smtp_secure: "{{ lookup('env', 'TRACKER_SMTP_SECURE') | default(omit, true) }}"
+tracker_email_from: "{{ lookup('env', 'TRACKER_EMAIL_FROM') | default('ansible-tracker@example.com', true) }}"
+# Comma-separated in the environment (e.g. TRACKER_EMAIL_TO="a@x.com,b@y.com");
+# override with an explicit YAML list via -e for ad-hoc runs if preferred.
+tracker_email_to: >-
+  {{
+    (lookup('env', 'TRACKER_EMAIL_TO') | default('', true)).split(',')
+    | map('trim') | select() | list
+  }}
+tracker_email_subject: "Support Case Tracker - Changes Detected"
+
+# When false (default), the notification email is only sent if at least one
+# tracked account has a new, closed, or updated case since the last run.
+tracker_notify_on_no_changes: false

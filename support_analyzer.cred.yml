@@ -54,6 +54,38 @@
         type: string
         label: Default update column
         help_text: Column letter for the JSON report payload.
+      - id: tracker_gsheet_sheet
+        type: string
+        label: Case tracker worksheet tab
+        default: Case Tracker
+        help_text: >-
+          Dedicated worksheet tab name owned entirely by track_support_cases.yml's
+          gsheet_tracker module. Keep this separate from gsheet_sheet above — the
+          tracker manages this tab's header row and all rows itself.
+      - id: tracker_smtp_host
+        type: string
+        label: Tracker SMTP host
+        help_text: SMTP server used by track_support_cases.yml to send change notifications.
+      - id: tracker_smtp_port
+        type: string
+        label: Tracker SMTP port
+        default: "25"
+      - id: tracker_smtp_username
+        type: string
+        label: Tracker SMTP username
+        help_text: Optional; leave blank for unauthenticated/local relay SMTP.
+      - id: tracker_smtp_password
+        type: string
+        label: Tracker SMTP password
+        secret: true
+        help_text: Optional; leave blank for unauthenticated/local relay SMTP.
+      - id: tracker_email_from
+        type: string
+        label: Tracker notification "from" address
+      - id: tracker_email_to
+        type: string
+        label: Tracker notification recipient(s)
+        help_text: Comma-separated list of recipient email addresses.
     required:
       - redhat_offline_token
       - llm_api_key
@@ -74,5 +106,12 @@
       GSHEET_SHEET: !unsafe "{{ gsheet_sheet }}"
       GSHEET_LOOKUP_COLUMN: !unsafe "{{ gsheet_lookup_column }}"
       GSHEET_UPDATE_COLUMN: !unsafe "{{ gsheet_update_column }}"
+      TRACKER_GSHEET_SHEET: !unsafe "{{ tracker_gsheet_sheet }}"
+      TRACKER_SMTP_HOST: !unsafe "{{ tracker_smtp_host }}"
+      TRACKER_SMTP_PORT: !unsafe "{{ tracker_smtp_port }}"
+      TRACKER_SMTP_USERNAME: !unsafe "{{ tracker_smtp_username }}"
+      TRACKER_SMTP_PASSWORD: !unsafe "{{ tracker_smtp_password }}"
+      TRACKER_EMAIL_FROM: !unsafe "{{ tracker_email_from }}"
+      TRACKER_EMAIL_TO: !unsafe "{{ tracker_email_to }}"
     file:
       template: !unsafe "{{ google_service_account_json }}"
