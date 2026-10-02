@@ -9,7 +9,11 @@ Guidance for agents (and humans) working in this repository.
 - `library/` — custom Ansible modules (Python): `gsheet_update.py`, `gsheet_tracker.py`, `llm_summarize.py`.
 - `templates/` — Jinja2 templates for markdown/JSON/HTML reports.
 - `group_vars/all/vars.yml` — default variables; `vars/inputs.example.yml` — per-run input example.
-- `support_analyzer.cred.yml` — credentials file (uses Ansible's `!unsafe` YAML tag).
+- `config/credential_types.yml` — Ansible Automation Platform custom credential type definitions
+  (`controller_credential_types` list: "Ansible Support Analyzer" and "SMTP Server"; uses
+  Ansible's `!unsafe` YAML tag). Both `analyze_support_cases.yml` and `track_support_cases.yml`
+  job templates attach their own separate Credential instance of "Ansible Support Analyzer";
+  only the tracker job template also needs an "SMTP Server" credential.
 
 ## Pre-commit Hooks
 
@@ -23,7 +27,7 @@ pre-commit run --all-files  # run on demand
 
 Notable, non-obvious configuration choices:
 
-- **`check-yaml --unsafe`**: `support_analyzer.cred.yml` uses Ansible's `!unsafe` YAML tag.
+- **`check-yaml --unsafe`**: `config/credential_types.yml` uses Ansible's `!unsafe` YAML tag.
   check-yaml's default safe loader rejects unknown tags, so `--unsafe` is required to let it
   load custom tags without erroring.
 - **`ruff-format` instead of `autopep8`/`black`**: `autopep8` depends on the `lib2to3` module,

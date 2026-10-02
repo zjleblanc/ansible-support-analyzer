@@ -331,14 +331,14 @@ ansible-playbook analyze_support_cases.yml \
 
 ## Tracking Support Case Changes (`track_support_cases.yml`)
 
-`track_support_cases.yml` is a separate, lightweight playbook designed to run on a cadence
-(cron, AAP schedule, etc.). Each run:
+`track_support_cases.yml` is a separate, lightweight playbook designed to run as its **own job
+template** on a cadence (cron, AAP schedule, etc.). Each run:
 
 1. Queries the same `support_case_accounts` for active support cases.
 2. Records them as individual rows in a **dedicated worksheet tab** that the `gsheet_tracker`
    module owns completely (header row and all data rows) — it is *not* the `Accounts` tab used
    by `analyze_support_cases.yml`, and does not rely on that playbook's lookup/update column
-   configuration. Treat it as its own green-field tab (default name: `Case Tracker`).
+   configuration. Treat it as its own green-field tab (default name: `Support Case Tracker`).
 3. Diffs the current cases against what was recorded on the previous run (new / closed /
    changed severity, status, or owner).
 4. Emails a summary of the diff via `community.general.mail` — only when something changed,
@@ -346,29 +346,58 @@ ansible-playbook analyze_support_cases.yml \
 
 No LLM is required for this playbook.
 
+### Credentials
+
+`track_support_cases.yml` leverages the **same credential type definitions** as
+`analyze_support_cases.yml` (see [`config/credential_types.yml`](../config/credential_types.yml)),
+but as a separate job template it attaches its own, separate credentials:
+
+1. **"Ansible Support Analyzer"** — a *second Credential instance* of the same credential type
+   used by `analyze_support_cases.yml` (Red Hat offline token, Google service account JSON,
+   `GOOGLE_SHEET_ID`, etc.). Leave `gsheet_sheet` at its default (`Support Case Tracker`) on this
+   instance — only the `analyze_support_cases.yml` job template's Credential overrides it to
+   `Accounts`.
+2. **"SMTP Server"** — also defined in `config/credential_types.yml`, mirrored from
+   [ansible-cac's credential_types.yml](https://github.com/zjleblanc/ansible-cac/blob/main/config/common/credential_types.yml).
+   Supplies `email_smtp_server`, `email_smtp_server_port`, `email_smtp_username`,
+   `email_smtp_password`, and `email_smtp_from_address` as `extra_vars` for the
+   change-notification email. Only the tracker job template needs this credential.
+
+No `TRACKER_*` environment variables are used anywhere in this project.
+
 ### Setup
 
 ```bash
 # Collection required for the notification email
 ansible-galaxy collection install community.general
 
-# Reuse the same Red Hat + Google Sheets credentials as analyze_support_cases.yml
+# "Ansible Support Analyzer" credential fields (env vars), e.g. for local/CLI runs —
+# on AAP these come from a Credential of the type in config/credential_types.yml
 export REDHAT_OFFLINE_TOKEN="your-redhat-offline-token"
 export GOOGLE_SA_CRED_PATH="$HOME/.config/support-analyzer/google-sa.json"
 export GOOGLE_SHEET_ID="your-spreadsheet-id"
-
-# Optional: override the dedicated tracker tab name (default: "Case Tracker")
-export TRACKER_GSHEET_SHEET="Case Tracker"
-
-# SMTP for the change-notification email
-export TRACKER_SMTP_HOST="smtp.example.com"
-export TRACKER_SMTP_PORT="587"
-export TRACKER_SMTP_USERNAME="notifier@example.com"   # optional
-export TRACKER_SMTP_PASSWORD="..."                     # optional
-export TRACKER_SMTP_SECURE="starttls"                  # optional: try|always|never|starttls
-export TRACKER_EMAIL_FROM="support-tracker@example.com"
-export TRACKER_EMAIL_TO="team@example.com,oncall@example.com"
+# Optional: override the dedicated tracker tab name (default: "Support Case Tracker")
+export GSHEET_SHEET="Support Case Tracker"
 ```
+
+The "SMTP Server" credential type injects `extra_vars`, not environment variables, so for
+local/CLI runs pass them with `-e` instead of `export`:
+
+```bash
+ansible-playbook track_support_cases.yml \
+  -e @vars/accounts.yml \
+  -e email_smtp_server="smtp.example.com" \
+  -e email_smtp_server_port="587" \
+  -e email_smtp_username="notifier@example.com" \
+  -e email_smtp_password="..." \
+  -e email_smtp_from_address="support-tracker@example.com" \
+  -e tracker_smtp_secure="starttls" \
+  -e tracker_email_to='["team@example.com","oncall@example.com"]'
+```
+
+`tracker_smtp_secure` (optional: `try`|`always`|`never`|`starttls`) and `tracker_email_to` are
+plain playbook variables — they are **not** sourced from any credential type, so set them with
+`-e` or as extra vars on the job template either way.
 
 ### Run once
 

@@ -27,7 +27,10 @@ llm_timeout: 120
 default_activity_date: "{{ (now().replace(month=((now().month - 7) % 12 + 1), year=now().year - (1 if now().month <= 6 else 0))).strftime('%Y-%m-%d') }}"
 
 # Google Sheets (optional — used with --tags json; see docs/GSUITE_QUICKSTART.md)
-gsheet_sheet: "{{ lookup('env', 'GSHEET_SHEET') | default('Accounts', true) }}"
+# Default matches the "Ansible Support Analyzer" credential type's gsheet_sheet
+# default (see config/credential_types.yml): "Support Case Tracker" — the Credential
+# attached to the analyze_support_cases.yml job template overrides this to "Accounts".
+gsheet_sheet: "{{ lookup('env', 'GSHEET_SHEET') | default('Support Case Tracker', true) }}"
 gsheet_lookup_column: "{{ lookup('env', 'GSHEET_LOOKUP_COLUMN') | default('K', true) }}"
 gsheet_update_column: "{{ lookup('env', 'GSHEET_UPDATE_COLUMN') | default('O', true) }}"
 
@@ -37,24 +40,32 @@ gsheet_update_column: "{{ lookup('env', 'GSHEET_UPDATE_COLUMN') | default('O', t
 gsheet_truncate_priority_products:
   - "Red Hat Ansible Automation Platform"
 
-# Case tracking (track_support_cases.yml) — dedicated worksheet tab owned entirely
-# by the gsheet_tracker module (do not reuse the analyze playbook's Accounts tab).
-tracker_gsheet_sheet: "{{ lookup('env', 'TRACKER_GSHEET_SHEET') | default('Case Tracker', true) }}"
+# Case tracking (track_support_cases.yml) uses gsheet_sheet above — a dedicated
+# worksheet tab owned entirely by the gsheet_tracker module. track_support_cases.yml
+# runs as its own job template with its own "Ansible Support Analyzer" Credential
+# instance (see config/credential_types.yml), so gsheet_sheet there can safely stay
+# at its "Support Case Tracker" default without colliding with the analyze
+# playbook's "Accounts" tab.
 
 # SMTP configuration for the change-notification email (community.general.mail).
-tracker_smtp_host: "{{ lookup('env', 'TRACKER_SMTP_HOST') | default('localhost', true) }}"
-tracker_smtp_port: "{{ lookup('env', 'TRACKER_SMTP_PORT') | default(25, true) | int }}"
-tracker_smtp_username: "{{ lookup('env', 'TRACKER_SMTP_USERNAME') | default(omit, true) }}"
-tracker_smtp_password: "{{ lookup('env', 'TRACKER_SMTP_PASSWORD') | default(omit, true) }}"
-tracker_smtp_secure: "{{ lookup('env', 'TRACKER_SMTP_SECURE') | default(omit, true) }}"
-tracker_email_from: "{{ lookup('env', 'TRACKER_EMAIL_FROM') | default('ansible-tracker@example.com', true) }}"
-# Comma-separated in the environment (e.g. TRACKER_EMAIL_TO="a@x.com,b@y.com");
-# override with an explicit YAML list via -e for ad-hoc runs if preferred.
-tracker_email_to: >-
-  {{
-    (lookup('env', 'TRACKER_EMAIL_TO') | default('', true)).split(',')
-    | map('trim') | select() | list
-  }}
+# These come from the "SMTP Server" credential type (config/credential_types.yml,
+# mirrored from https://github.com/zjleblanc/ansible-cac/blob/main/config/common/credential_types.yml)
+# injected as extra_vars on the track_support_cases.yml job template — NOT as
+# TRACKER_* environment variables. The self-referencing default() below lets the
+# credential's extra_vars (higher precedence) win, falling back to these defaults
+# for local/dev runs where no such credential is attached.
+email_smtp_server: "{{ email_smtp_server | default('localhost') }}"
+email_smtp_server_port: "{{ email_smtp_server_port | default(25) | int }}"
+email_smtp_username: "{{ email_smtp_username | default(omit) }}"
+email_smtp_password: "{{ email_smtp_password | default(omit) }}"
+email_smtp_from_address: "{{ email_smtp_from_address | default('ansible-tracker@example.com') }}"
+
+# The following are plain playbook variables (not sourced from any credential type).
+# Set them with -e or as extra vars on the track_support_cases.yml job template.
+tracker_smtp_secure: "{{ tracker_smtp_secure | default(omit) }}"
+# Recipients for the change-notification email, e.g.
+# -e tracker_email_to='["team@example.com","oncall@example.com"]'
+tracker_email_to: "{{ tracker_email_to | default([]) }}"
 tracker_email_subject: "Support Case Tracker - Changes Detected"
 
 # When false (default), the notification email is only sent if at least one

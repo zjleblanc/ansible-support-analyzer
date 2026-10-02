@@ -68,7 +68,7 @@ Also set Red Hat and LLM variables (see [QUICKSTART.md](QUICKSTART.md)).
 
 ### Ansible Automation Platform
 
-Use the custom credential type in `support_analyzer.cred.yml` (or `controller/credential_types/support_analyzer.spec.yml`). It injects the same environment variables and materializes the service account JSON at job runtime. See [controller/README.md](../controller/README.md).
+Use the "Ansible Support Analyzer" custom credential type defined in [`config/credential_types.yml`](../config/credential_types.yml) (`controller_credential_types` list). It injects the same environment variables and materializes the service account JSON at job runtime. Attach a separate Credential instance of this type to each job template — set `gsheet_sheet` to `Accounts` on the `analyze_support_cases.yml` job template's Credential (the `track_support_cases.yml` job template uses the default, `Support Case Tracker`).
 
 ## 4. Configure accounts
 

@@ -71,7 +71,7 @@
 - name: Record active cases and compute diff since last run | {{ account.name }}
   gsheet_tracker:
     gsheet_id: "{{ gsheet_id | default(omit) }}"
-    sheet: "{{ tracker_gsheet_sheet }}"
+    sheet: "{{ gsheet_sheet }}"
     account_name: "{{ support_case_account_name }}"
     cases: "{{ tracked_cases }}"
   register: r_gsheet_tracker

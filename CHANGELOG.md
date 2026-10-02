@@ -17,14 +17,32 @@ All notable changes to the Ansible Support Analyzer project will be documented i
   `tasks/analyze_account.yml`'s structure.
 - **`templates/tracking_email.html.j2`**: HTML email summarizing new/closed/updated cases
   across all tracked accounts, sent via `community.general.mail`.
-- **New variables** in `group_vars/all/vars.yml`: `tracker_gsheet_sheet`, `tracker_smtp_host`,
-  `tracker_smtp_port`, `tracker_smtp_username`, `tracker_smtp_password`, `tracker_smtp_secure`,
-  `tracker_email_from`, `tracker_email_to`, `tracker_email_subject`,
-  `tracker_notify_on_no_changes`.
-- **Ansible Automation Platform**: `support_analyzer.cred.yml` extended with tracker sheet and
-  SMTP fields/injectors (`TRACKER_*` environment variables).
+- **New variables** in `group_vars/all/vars.yml`: `email_smtp_server`, `email_smtp_server_port`,
+  `email_smtp_username`, `email_smtp_password`, `email_smtp_from_address`, `tracker_smtp_secure`,
+  `tracker_email_to`, `tracker_email_subject`, `tracker_notify_on_no_changes`.
+- **Ansible Automation Platform**: New [`config/credential_types.yml`](config/credential_types.yml)
+  (replaces `support_analyzer.cred.yml`) defining a `controller_credential_types` list with two
+  credential types:
+  - **"Ansible Support Analyzer"**: Red Hat, LLM, and Google Sheets fields/injectors, shared by
+    both `analyze_support_cases.yml` and `track_support_cases.yml` via **separate Credential
+    instances** attached to each job template (`gsheet_sheet` defaults to `Support Case Tracker`
+    for the tracker's Credential; the analyze job template's Credential overrides it to
+    `Accounts`). No `TRACKER_*` environment variables are injected by this type.
+  - **"SMTP Server"**: mirrored from
+    [ansible-cac](https://github.com/zjleblanc/ansible-cac/blob/main/config/common/credential_types.yml),
+    injecting `email_smtp_server`, `email_smtp_server_port`, `email_smtp_username`,
+    `email_smtp_password`, and `email_smtp_from_address` as `extra_vars`. Attached only to the
+    `track_support_cases.yml` job template for change-notification emails.
 - **Documentation**: New "Tracking Support Case Changes" section in
   [docs/EXAMPLES.md](docs/EXAMPLES.md).
+
+### Removed
+- All `TRACKER_*` environment variables (`TRACKER_GSHEET_SHEET`, `TRACKER_SMTP_HOST`,
+  `TRACKER_SMTP_PORT`, `TRACKER_SMTP_USERNAME`, `TRACKER_SMTP_PASSWORD`, `TRACKER_EMAIL_FROM`,
+  `TRACKER_EMAIL_TO`) and their corresponding credential type fields. SMTP settings now come
+  from the dedicated "SMTP Server" credential type; the tracker worksheet tab name now reuses
+  `gsheet_sheet`/`GSHEET_SHEET` (set per-Credential instead of a separate `tracker_gsheet_sheet`).
+- `support_analyzer.cred.yml` (superseded by `config/credential_types.yml`).
 
 ### Dependencies
 - Requires the `community.general` collection for `community.general.mail`
