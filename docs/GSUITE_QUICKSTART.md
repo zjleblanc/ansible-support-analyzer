@@ -160,4 +160,4 @@ Credentials: `credentials_path` / `GOOGLE_SA_CRED_PATH`, or `credentials` dict f
 
 - [EXAMPLES.md](EXAMPLES.md) — account lists, tags, automation
 - [QUICKSTART.md](QUICKSTART.md) — Red Hat and LLM setup
-- [controller/README.md](../controller/README.md) — Automation Platform credential type
+- [USAGE.md](USAGE.md) — Automation Platform credential types, credentials, and job templates

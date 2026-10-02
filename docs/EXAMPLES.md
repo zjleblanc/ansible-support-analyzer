@@ -441,4 +441,5 @@ For more information:
 - Main documentation: [README.md](../README.md)
 - Quick start: [QUICKSTART.md](QUICKSTART.md)
 - Google Sheets: [GSUITE_QUICKSTART.md](GSUITE_QUICKSTART.md)
+- Running on Ansible Automation Platform: [USAGE.md](USAGE.md)
 - Open an issue for bugs or questions

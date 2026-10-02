@@ -79,7 +79,7 @@ pip install -r requirements.txt
 
 ## Usage
 
-See [docs/EXAMPLES.md](docs/EXAMPLES.md) for detailed examples and [docs/QUICKSTART.md](docs/QUICKSTART.md) for a five-minute setup.
+See [docs/EXAMPLES.md](docs/EXAMPLES.md) for detailed examples, [docs/QUICKSTART.md](docs/QUICKSTART.md) for a five-minute setup, and [docs/USAGE.md](docs/USAGE.md) for running on Ansible Automation Platform (credential types, credentials, and job templates).
 
 ### Basic usage
 
