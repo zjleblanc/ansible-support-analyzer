@@ -1,11 +1,9 @@
 ---
-# Default variables for ansible-support-analyzer
-
 # API credentials with priority: environment variables > vault
 redhat_offline_token: "{{ lookup('env', 'REDHAT_OFFLINE_TOKEN') | default(vault_redhat_offline_token, true) }}"
 llm_api_key: "{{ lookup('env', 'LLM_API_KEY') | default(vault_llm_api_key, true) }}"
 
-# Red Hat SSO and API configuration
+# Red Hat SSO and API configuration (Legacy)
 redhat_sso_url: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token"
 redhat_api_base_url: "https://api.access.redhat.com/support/v3"
 redhat_api_timeout: 30
@@ -20,9 +18,6 @@ redhat_graphql_page_size: 200
 default_analysis_file_dest: "reports/{{ support_case_account_name | default('Account') }}_support_case_summary_{{ now(fmt='%Y-%m-%d') }}"
 
 # LLM AI configuration (OpenAI-compatible API)
-# For local vLLM: http://localhost:8000/v1
-# For Ollama: http://localhost:11434/v1
-# For OpenAI: https://api.openai.com/v1
 llm_api_base_url: "{{ lookup('env', 'LLM_API_BASE_URL') | default(vault_llm_api_base_url, true) }}"
 llm_model: "{{ lookup('env', 'LLM_MODEL') | default(vault_llm_model | default('gpt-3.5-turbo', true), true) }}"
 llm_temperature: 0.7
@@ -32,53 +27,15 @@ llm_timeout: 120
 # Case filtering defaults
 default_activity_date: "{{ (now().replace(month=((now().month - 7) % 12 + 1), year=now().year - (1 if now().month <= 6 else 0))).strftime('%Y-%m-%d') }}"
 
-# Google Sheets (optional — used with --tags json; see docs/GSUITE_QUICKSTART.md)
-# Default matches the "Ansible Support Analyzer" credential type's gsheet_sheet
-# default (see config/credential_types.yml): "Support Case Tracker" — the Credential
-# attached to the analyze_support_cases.yml job template overrides this to "Accounts".
+# Google Sheets
 gsheet_sheet: "{{ lookup('env', 'GSHEET_SHEET') | default('Support Case Tracker', true) }}"
+gsheet_table_name: "{{ lookup('env', 'GSHEET_TABLE_NAME') | default(gsheet_sheet, true) }}"
 gsheet_lookup_column: "{{ lookup('env', 'GSHEET_LOOKUP_COLUMN') | default('K', true) }}"
 gsheet_update_column: "{{ lookup('env', 'GSHEET_UPDATE_COLUMN') | default('O', true) }}"
-
-# When the rendered report exceeds the Google Sheets 50,000-character single-cell
-# limit, gsheet_update progressively trims lower-priority data before writing.
-# Cases for these products are preserved longest.
 gsheet_truncate_priority_products:
   - "Red Hat Ansible Automation Platform"
 
-# Case tracking (track_support_cases.yml) uses gsheet_sheet above — a dedicated
-# worksheet tab owned entirely by the gsheet_tracker module. track_support_cases.yml
-# runs as its own job template with its own "Ansible Support Analyzer" Credential
-# instance (see config/credential_types.yml), so gsheet_sheet there can safely stay
-# at its "Support Case Tracker" default without colliding with the analyze
-# playbook's "Accounts" tab.
-
-# SMTP configuration for the change-notification email (community.general.mail).
-# These come from the "SMTP Server" credential type (config/credential_types.yml,
-# mirrored from https://github.com/zjleblanc/ansible-cac/blob/main/config/common/credential_types.yml)
-# injected as extra_vars on the track_support_cases.yml job template — NOT as
-# TRACKER_* environment variables. The defaults below are for local/dev runs where
-# no such credential is attached; the credential's extra_vars (higher precedence)
-# override them automatically.
-#
-# NOTE: Do NOT use self-referencing defaults like  var: "{{ var | default(...) }}"
-# in group_vars — they cause infinite template recursion when the variable is not
-# set at a higher precedence level. For optional parameters (username, password,
-# secure), omit them here entirely and let the playbook's default(omit) handle it.
-email_smtp_server: "localhost"
-email_smtp_server_port: 25
-# email_smtp_username  — injected by SMTP credential or -e; omitted when unset
-# email_smtp_password  — injected by SMTP credential or -e; omitted when unset
-email_smtp_from_address: "ansible-tracker@example.com"
-
-# The following are plain playbook variables (not sourced from any credential type).
-# Set them with -e or as extra vars on the track_support_cases.yml job template.
-# tracker_smtp_secure — optional: try | always | never | starttls; omitted when unset
-# Recipients for the change-notification email, e.g.
-# -e tracker_email_to='["team@example.com","oncall@example.com"]'
-tracker_email_to: []
+# Tracker
+tracker_status_filter: { ne: "Closed" }
 tracker_email_subject: "Support Case Tracker - Changes Detected"
-
-# When false (default), the notification email is only sent if at least one
-# tracked account has a new, closed, or updated case since the last run.
 tracker_notify_on_no_changes: false

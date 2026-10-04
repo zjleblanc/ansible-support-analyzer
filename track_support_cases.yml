@@ -4,13 +4,10 @@
   gather_facts: false
 
   vars:
-    # Provide one or more accounts via support_case_accounts (see vars/accounts.example.yml),
-    # or set support_case_account_name + support_case_account_ids for a single account.
-
-    # Default values that can be overridden with -e
     activity_date: "{{ default_activity_date }}"
     secure_logging: true
     tracking_results: []
+    tracker_pending_rows: []
 
   tasks:
     - name: Check API and notification credentials
@@ -86,12 +83,36 @@
       no_log: "{{ secure_logging }}"
       tags: [always, auth]
 
+    - name: Read previous tracker state once for every tracked account
+      gsheet_tracker:
+        state: read
+        gsheet_id: "{{ gsheet_id | default(omit) }}"
+        sheet: "{{ gsheet_sheet }}"
+        account_names: "{{ support_case_accounts | map(attribute='name') | list }}"
+      register: r_tracker_read
+      tags: [always, fetch]
+
     - name: Track each account configuration
       loop: "{{ support_case_accounts }}"
       loop_control:
         loop_var: account
         label: "{{ account.name }}"
       ansible.builtin.include_tasks: tasks/track_account.yml
+      tags: [always]
+
+    - name: Build the full row matrix for this run (other accounts' rows + every tracked account's new rows)
+      ansible.builtin.set_fact:
+        tracker_final_rows: "{{ r_tracker_read.other_rows + tracker_pending_rows }}"
+      tags: [always]
+
+    - name: Write tracker state once for the whole run
+      gsheet_tracker:
+        state: write
+        gsheet_id: "{{ gsheet_id | default(omit) }}"
+        sheet: "{{ gsheet_sheet }}"
+        table_name: "{{ gsheet_table_name }}"
+        rows: "{{ tracker_final_rows }}"
+      register: r_tracker_write
       tags: [always]
 
     - name: Determine whether any account has changes

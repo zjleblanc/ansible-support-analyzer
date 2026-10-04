@@ -157,6 +157,13 @@ of this type (see step 6).
 | `gsheet_lookup_column` | Default lookup column | string | | | Used by `analyze_support_cases.yml` only |
 | `gsheet_update_column` | Default update column | string | | | Used by `analyze_support_cases.yml` only |
 
+Not currently a Credential field (set via `group_vars/all/vars.yml` or `-e` instead):
+
+| Variable | Purpose |
+|---|---|
+| `gsheet_table_name` | Name of a Sheets API Table maintained over the tracker tab's data range (`track_support_cases.yml` only). Defaults to `gsheet_sheet`; set to `""` to skip. Best-effort — a failure only emits a warning, since the row data itself already wrote successfully. |
+| `tracker_status_filter` | GraphQL `status_filter` applied to the tracker's fetch. Default `{ne: "Closed"}` — excludes closed cases so they surface via the diff's `closed_cases` instead of lingering as "active". |
+
 Injects `REDHAT_OFFLINE_TOKEN`, `LLM_API_KEY`, `LLM_API_BASE_URL`, `LLM_MODEL`,
 `GOOGLE_SA_CRED_PATH` (the materialized key file path), `GOOGLE_SHEET_ID`, `GSHEET_SHEET`,
 `GSHEET_LOOKUP_COLUMN`, and `GSHEET_UPDATE_COLUMN` as environment variables, and writes

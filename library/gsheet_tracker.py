@@ -17,25 +17,37 @@ description:
     - Owns a single worksheet tab end-to-end as a case tracker. The module manages the sheet's
       structure itself (header row, column layout, row contents); callers should treat the tab
       as owned storage rather than a hand-maintained spreadsheet.
-    - On each run, reads the previously recorded rows for O(account_name), compares them against
-      O(cases) (the current set of active cases), and replaces that account's rows with the new
-      data. Rows belonging to other accounts already present in the sheet are left untouched.
-    - Returns the computed diff (new cases, closed cases, and cases whose severity/status/owner
-      changed) so a playbook can build a change notification without re-deriving it in Jinja2.
-    - Requires the Google Sheets API and a service account JSON key with Editor access to the
-      spreadsheet.
+    - Split into three explicit, composable operations so a multi-account playbook can make
+      B(exactly one) read and B(exactly one) write against the Google Sheets API per run,
+      regardless of how many accounts are tracked, instead of one read+write pair per account.
+    - C(read) reads the whole tab once and returns the previous rows for a set of accounts
+      (grouped per account) plus every row that belongs to B(other) accounts, verbatim
+      (including any C(HYPERLINK) formulas — the read uses the Sheets API C(FORMULA) render
+      option so round-tripping those rows back through C(write) does not strip them).
+    - C(diff) is a pure, local computation — no Google API calls at all. Given the
+      O(existing_rows) from a prior C(read) and the current O(cases) for one O(account_name),
+      it computes the diff (new/closed/updated cases) and builds that account's replacement
+      rows, stamped with a fresh C(last_seen) timestamp.
+    - C(write) takes the fully assembled row list (the untouched rows from C(read)'s
+      O(other_rows) plus every account's rows from its C(diff) call, concatenated by the
+      caller) and performs a single clear+rewrite of the tab.
 author:
     - Ansible Support Analyzer
 options:
     state:
         description:
-            - C(present) (default) reads the sheet, diffs, and writes updated rows — existing behavior.
-            - C(read) reads the sheet and returns the previous state for O(account_name) (including
-              C(last_seen_timestamp)) B(without writing anything). Use this before a GraphQL fetch
-              to determine the date cutoff for incremental queries.
+            - C(read) reads the sheet once and returns previous state for O(account_names)
+              (grouped per account, including each one's C(last_seen_timestamp)) plus
+              C(other_rows) — raw rows belonging to accounts outside O(account_names) — B(without
+              writing anything).
+            - C(diff) computes the new/closed/updated diff for one account against
+              O(existing_rows) (as returned by a prior C(read) call) and builds that account's
+              replacement rows. Purely local; makes no Google API calls.
+            - C(write) performs the single clear+rewrite of the tab with O(rows) (the full,
+              pre-assembled row list for every account).
         type: str
-        choices: [present, read]
-        default: present
+        choices: [read, diff, write]
+        required: true
     credentials_path:
         description:
             - Path to the Google service account JSON key file.
@@ -60,34 +72,66 @@ options:
               (header row and all data rows); do not share it with other playbooks or reports.
         type: str
         default: "Support Case Tracker"
+    table_name:
+        description:
+            - Name of a Google Sheets API "Table" object to create (or resize) over the tab's
+              data range on every C(write). Google Sheets Tables are a Sheets API v4 feature
+              (C(addTable)/C(updateTable) C(batchUpdate) requests); the Google B(Drive) API has
+              no concept of spreadsheet tables or cell data at all, so this is implemented purely
+              against the Sheets API the module already uses.
+            - Only used by C(state=write). Set to an empty string to skip table management.
+            - Best-effort: a failure to create/resize the table emits an Ansible warning rather
+              than failing the task, since the row data itself has already been written
+              successfully by the time this runs.
+        type: str
     account_name:
         description:
-            - Identifies which rows in the tracker tab belong to this account. Only rows whose
-              Account column matches this value are read, diffed, and replaced.
-        required: true
+            - Identifies which rows belong to this account. Required for O(state=diff).
         type: str
+    account_names:
+        description:
+            - List of account names to summarize previous state for. Required for O(state=read).
+              Rows belonging to any other account are returned verbatim via C(other_rows)
+              instead.
+        type: list
+        elements: str
+    existing_rows:
+        description:
+            - The full, raw data-row matrix as returned by a prior O(state=read) call's
+              C(existing_rows). Required for O(state=diff).
+        type: list
+        elements: list
     cases:
         description:
             - Current active cases for O(account_name). Each case is a dict with keys
               C(case_id) (required), C(summary), C(product), C(severity), C(status), C(owner),
-              C(created), and C(last_modified). Unknown keys are ignored.
+              C(created), and C(last_modified). Unknown keys are ignored. Used by O(state=diff).
         type: list
         elements: dict
+        default: []
+    rows:
+        description:
+            - The full, pre-assembled row matrix (header excluded) to write to the sheet.
+              Typically O(state=read)'s C(other_rows) concatenated with every tracked
+              account's C(rows) from its own O(state=diff) call. Used by O(state=write).
+        type: list
+        elements: list
         default: []
 """
 
 EXAMPLES = r"""
-- name: Read previous state to determine last-run timestamp (state=read)
+- name: Read previous state once for every tracked account
   gsheet_tracker:
     state: read
     sheet: "Case Tracker"
-    account_name: "Parasol"
-  register: tracker_prev
+    account_names: "{{ support_case_accounts | map(attribute='name') | list }}"
+  register: tracker_read
 
-- name: Record active cases and compute the diff since the last run
+- name: Compute the diff for one account (no API calls)
   gsheet_tracker:
-    sheet: "Case Tracker"
+    state: diff
     account_name: "Parasol"
+    existing_rows: "{{ tracker_read.existing_rows }}"
     cases:
       - case_id: "03919019"
         summary: "Cluster nodes failing to join"
@@ -97,65 +141,97 @@ EXAMPLES = r"""
         owner: "Jane Doe"
         created: "2026-09-01T12:00:00Z"
         last_modified: "2026-09-30T08:15:00Z"
-  register: tracker_result
+  register: tracker_diff
 
-- name: Use explicit credentials path
+- name: Write every account's rows back in a single call
   gsheet_tracker:
-    credentials_path: /path/to/service-account.json
-    gsheet_id: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+    state: write
     sheet: "Case Tracker"
-    account_name: "Southwest Airlines"
-    cases: "{{ current_cases }}"
-  register: tracker_result
+    table_name: "Case Tracker"
+    rows: "{{ tracker_read.other_rows + tracker_diff.rows }}"
+  register: tracker_write
 """
 
 RETURN = r"""
 changed:
-    description: Whether the sheet was modified (always true unless check_mode, since last_seen is refreshed).
+    description: Whether the sheet was modified. Always false for C(read)/C(diff); true for C(write) (unless check_mode).
     type: bool
     returned: success
+existing_rows:
+    description: >-
+        Every raw data row currently in the sheet (padded, header excluded). Pass straight
+        into O(state=diff)'s O(existing_rows). Returned by C(state=read).
+    type: list
+    elements: list
+    returned: state=read
+other_rows:
+    description: >-
+        Raw rows belonging to accounts outside O(account_names), verbatim (including any
+        HYPERLINK formulas). Concatenate with every account's C(diff) rows before
+        O(state=write). Returned by C(state=read).
+    type: list
+    elements: list
+    returned: state=read
+accounts:
+    description: Per-account previous state, keyed by account name. Returned by C(state=read).
+    type: dict
+    returned: state=read
+    contains:
+        last_seen_timestamp:
+            description: >-
+                The latest C(Last Seen) value previously recorded for this account, or an
+                empty string when no previous rows exist.
+            type: str
+        total_previous:
+            description: Number of rows previously recorded for this account.
+            type: int
 new_cases:
-    description: Cases present now that were not present on the previous run.
+    description: Cases present now that were not present on the previous run. Returned by C(state=diff).
     type: list
     elements: dict
-    returned: success
+    returned: state=diff
 closed_cases:
-    description: Cases present on the previous run that are no longer active.
+    description: Cases present on the previous run that are no longer active. Returned by C(state=diff).
     type: list
     elements: dict
-    returned: success
+    returned: state=diff
 updated_cases:
     description: >-
         Cases present on both runs whose severity, status, or owner changed. Each entry includes
-        the case identity plus a C(changes) dict of C(field) -> C({old, new}).
+        the case identity plus a C(changes) dict of C(field) -> C({old, new}). Returned by C(state=diff).
     type: list
     elements: dict
-    returned: success
+    returned: state=diff
 total_current:
-    description: Number of cases passed in via O(cases).
+    description: Number of cases passed in via O(cases). Returned by C(state=diff).
     type: int
-    returned: success
+    returned: state=diff
 total_previous:
-    description: Number of cases previously recorded for O(account_name).
+    description: Number of cases previously recorded for O(account_name). Returned by C(state=diff).
     type: int
-    returned: success
+    returned: state=diff
 has_changes:
-    description: True when any case was added, closed, or updated.
+    description: True when any case was added, closed, or updated. Returned by C(state=diff).
     type: bool
-    returned: success
+    returned: state=diff
+rows:
+    description: >-
+        This account's freshly-built replacement rows, stamped with the current
+        C(last_seen) timestamp. Accumulate across accounts and pass to O(state=write)'s
+        O(rows). Returned by C(state=diff).
+    type: list
+    elements: list
+    returned: state=diff
+total_rows:
+    description: Number of data rows written to the sheet (header not included). Returned by C(state=write).
+    type: int
+    returned: state=write
 gsheet_id:
-    description: The spreadsheet ID that was updated.
+    description: The spreadsheet ID used.
     type: str
     returned: success
 sheet:
     description: The worksheet tab name used.
-    type: str
-    returned: success
-last_seen_timestamp:
-    description: >-
-        The latest C(Last Seen) value among previous rows for O(account_name), or an empty
-        string when no previous rows exist. Useful as a C(last_modified_since) cutoff for
-        incremental GraphQL queries. Always returned, but most relevant with C(state=read).
     type: str
     returned: success
 """
@@ -253,11 +329,20 @@ def quote_sheet(sheet):
 
 
 def get_sheet_values(service, spreadsheet_id, sheet):
-    """Read every populated row from a worksheet tab."""
+    """Read every populated row from a worksheet tab.
+
+    Uses valueRenderOption=FORMULA so that cells containing a formula (e.g. the
+    Case ID column's =HYPERLINK(...) formulas) round-trip back through write()
+    verbatim instead of being flattened to their last computed display value.
+    """
     result = (
         service.spreadsheets()
         .values()
-        .get(spreadsheetId=spreadsheet_id, range=quote_sheet(sheet))
+        .get(
+            spreadsheetId=spreadsheet_id,
+            range=quote_sheet(sheet),
+            valueRenderOption="FORMULA",
+        )
         .execute()
     )
     return result.get("values", [])
@@ -346,21 +431,67 @@ def diff_cases(previous_by_id, current_by_id):
     return new_cases, closed_cases, updated_cases
 
 
-def main():
-    module = AnsibleModule(
-        argument_spec=dict(
-            state=dict(type="str", default="present", choices=["present", "read"]),
-            credentials_path=dict(type="path"),
-            credentials=dict(type="dict", no_log=True),
-            gsheet_id=dict(type="str", aliases=["spreadsheet_id"]),
-            sheet=dict(type="str", default="Support Case Tracker"),
-            account_name=dict(type="str", required=True),
-            cases=dict(type="list", elements="dict", default=[]),
-        ),
-        mutually_exclusive=[["credentials_path", "credentials"]],
-        supports_check_mode=True,
-    )
+def find_sheet_and_table(service, spreadsheet_id, sheet_name, table_name):
+    """Return (sheet_id, existing_table_or_None) for the given tab/table name.
 
+    Note: this is a Sheets API v4 feature (addTable/updateTable batchUpdate
+    requests); the Drive API has no endpoint for spreadsheet cell data or
+    tables at all, so table management is implemented purely against the same
+    Sheets API service this module already builds.
+    """
+    meta = (
+        service.spreadsheets()
+        .get(
+            spreadsheetId=spreadsheet_id,
+            fields="sheets(properties(sheetId,title),tables(tableId,name,range))",
+        )
+        .execute()
+    )
+    for sheet_meta in meta.get("sheets", []):
+        props = sheet_meta.get("properties", {})
+        if props.get("title") != sheet_name:
+            continue
+        sheet_id = props.get("sheetId")
+        for table in sheet_meta.get("tables", []) or []:
+            if table.get("name") == table_name:
+                return sheet_id, table
+        return sheet_id, None
+    return None, None
+
+
+def ensure_table(service, spreadsheet_id, sheet_name, table_name, num_rows, num_cols):
+    """Create (or resize) a Sheets API Table covering the tab's full data range."""
+    sheet_id, existing_table = find_sheet_and_table(
+        service, spreadsheet_id, sheet_name, table_name
+    )
+    if sheet_id is None:
+        raise ValueError(f"worksheet tab '{sheet_name}' not found")
+
+    table_range = {
+        "sheetId": sheet_id,
+        "startRowIndex": 0,
+        "endRowIndex": max(num_rows, 1),
+        "startColumnIndex": 0,
+        "endColumnIndex": max(num_cols, 1),
+    }
+
+    if existing_table is None:
+        request = {"addTable": {"table": {"name": table_name, "range": table_range}}}
+    else:
+        request = {
+            "updateTable": {
+                "table": {"tableId": existing_table["tableId"], "range": table_range},
+                "fields": "range",
+            }
+        }
+
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id, body={"requests": [request]}
+    ).execute()
+
+
+def build_service(module):
+    """Resolve credentials/gsheet_id and build the Sheets API service, failing the module on error."""
     if not HAS_GOOGLE:
         module.fail_json(
             msg=(
@@ -375,8 +506,6 @@ def main():
         credentials_path = resolve_credentials_path(credentials_path)
 
     gsheet_id = resolve_gsheet_id(module.params["gsheet_id"])
-    sheet = module.params["sheet"]
-    account_name = module.params["account_name"]
 
     if not gsheet_id:
         module.fail_json(
@@ -401,6 +530,18 @@ def main():
 
     try:
         service = build("sheets", "v4", credentials=creds)
+    except Exception as exc:
+        module.fail_json(msg=f"Failed to build Sheets API client: {exc}")
+
+    return service, gsheet_id
+
+
+def do_read(module, sheet):
+    """state=read: one API read; returns per-account previous state plus other accounts' raw rows."""
+    service, gsheet_id = build_service(module)
+    account_names = module.params["account_names"] or []
+
+    try:
         existing_values = get_sheet_values(service, gsheet_id, sheet)
     except HttpError as exc:
         module.fail_json(msg=f"Google Sheets API error: {exc}")
@@ -411,26 +552,45 @@ def main():
     # every remaining row is a data row in the fixed HEADER_KEYS column order.
     data_rows = [pad_row(row, len(HEADER_DISPLAY)) for row in existing_values[1:]]
 
-    other_account_rows = [row for row in data_rows if row[0] != account_name]
+    other_rows = [row for row in data_rows if row[0] not in account_names]
+
+    accounts = {}
+    for name in account_names:
+        rows_for_account = [row_to_dict(row) for row in data_rows if row[0] == name]
+        accounts[name] = {
+            "last_seen_timestamp": latest_last_seen(rows_for_account),
+            "total_previous": len(rows_for_account),
+        }
+
+    module.exit_json(
+        changed=False,
+        existing_rows=data_rows,
+        other_rows=other_rows,
+        accounts=accounts,
+        gsheet_id=gsheet_id,
+        sheet=sheet,
+    )
+
+
+def do_diff(module, sheet):
+    """state=diff: pure local computation, no Google API calls."""
+    account_name = module.params["account_name"]
+    if not account_name:
+        module.fail_json(msg="account_name is required when state=diff")
+
+    existing_rows = module.params["existing_rows"]
+    if existing_rows is None:
+        module.fail_json(
+            msg="existing_rows is required when state=diff (pass through state=read's existing_rows)"
+        )
+
+    data_rows = [pad_row(row, len(HEADER_DISPLAY)) for row in existing_rows]
     previous_account_rows = [
-        row_to_dict(row) for row in data_rows if row[0] == account_name
+        row_to_dict(row) for row in data_rows if row and row[0] == account_name
     ]
     previous_by_id = {
         row["case_id"]: row for row in previous_account_rows if row.get("case_id")
     }
-
-    last_seen_ts = latest_last_seen(previous_account_rows)
-    state = module.params["state"]
-
-    # state=read: return previous-state metadata without diffing or writing.
-    if state == "read":
-        module.exit_json(
-            changed=False,
-            total_previous=len(previous_by_id),
-            last_seen_timestamp=last_seen_ts,
-            gsheet_id=gsheet_id,
-            sheet=sheet,
-        )
 
     normalized_cases = [normalize_case(case) for case in module.params["cases"]]
     missing_id = next((c for c in normalized_cases if not c["case_id"]), None)
@@ -450,24 +610,36 @@ def main():
         )
     ]
 
-    result = dict(
-        changed=True,
+    module.exit_json(
+        changed=False,
         new_cases=new_cases,
         closed_cases=closed_cases,
         updated_cases=updated_cases,
         total_current=len(current_by_id),
         total_previous=len(previous_by_id),
         has_changes=has_changes,
-        gsheet_id=gsheet_id,
+        rows=this_account_rows,
+        gsheet_id=resolve_gsheet_id(module.params["gsheet_id"]) or "",
         sheet=sheet,
-        last_seen_timestamp=last_seen_ts,
     )
 
-    if module.check_mode:
-        result["check_mode"] = True
-        module.exit_json(**result)
 
-    full_matrix = [HEADER_DISPLAY] + other_account_rows + this_account_rows
+def do_write(module, sheet):
+    """state=write: the single clear+rewrite of the whole tab for this run."""
+    rows = module.params["rows"]
+    table_name = module.params["table_name"]
+
+    if module.check_mode:
+        module.exit_json(
+            changed=True,
+            check_mode=True,
+            total_rows=len(rows),
+            gsheet_id=resolve_gsheet_id(module.params["gsheet_id"]) or "",
+            sheet=sheet,
+        )
+
+    service, gsheet_id = build_service(module)
+    full_matrix = [HEADER_DISPLAY] + rows
 
     try:
         service.spreadsheets().values().clear(
@@ -484,7 +656,57 @@ def main():
     except Exception as exc:
         module.fail_json(msg=f"Failed to update spreadsheet: {exc}")
 
-    module.exit_json(**result)
+    if table_name:
+        try:
+            ensure_table(
+                service,
+                gsheet_id,
+                sheet,
+                table_name,
+                len(full_matrix),
+                len(HEADER_DISPLAY),
+            )
+        except Exception as exc:
+            module.warn(
+                f"Row data was written, but creating/resizing table '{table_name}' failed: {exc}"
+            )
+
+    module.exit_json(
+        changed=True,
+        total_rows=len(rows),
+        gsheet_id=gsheet_id,
+        sheet=sheet,
+    )
+
+
+def main():
+    module = AnsibleModule(
+        argument_spec=dict(
+            state=dict(type="str", required=True, choices=["read", "diff", "write"]),
+            credentials_path=dict(type="path"),
+            credentials=dict(type="dict", no_log=True),
+            gsheet_id=dict(type="str", aliases=["spreadsheet_id"]),
+            sheet=dict(type="str", default="Support Case Tracker"),
+            table_name=dict(type="str"),
+            account_name=dict(type="str"),
+            account_names=dict(type="list", elements="str"),
+            existing_rows=dict(type="list", elements="list"),
+            cases=dict(type="list", elements="dict", default=[]),
+            rows=dict(type="list", elements="list", default=[]),
+        ),
+        mutually_exclusive=[["credentials_path", "credentials"]],
+        supports_check_mode=True,
+    )
+
+    state = module.params["state"]
+    sheet = module.params["sheet"]
+
+    if state == "read":
+        do_read(module, sheet)
+    elif state == "diff":
+        do_diff(module, sheet)
+    elif state == "write":
+        do_write(module, sheet)
 
 
 if __name__ == "__main__":

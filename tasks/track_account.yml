@@ -6,18 +6,9 @@
     activity_date: "{{ account.activity_date | default(activity_date) }}"
   tags: [always]
 
-- name: Read previous tracker state for last-run timestamp | {{ account.name }}
-  gsheet_tracker:
-    state: read
-    gsheet_id: "{{ gsheet_id | default(omit) }}"
-    sheet: "{{ gsheet_sheet }}"
-    account_name: "{{ support_case_account_name }}"
-  register: r_tracker_prev
-  tags: [always, fetch]
-
 - name: Determine effective last-modified cutoff | {{ account.name }}
   vars:
-    _sheet_ts: "{{ r_tracker_prev.last_seen_timestamp | default('', true) }}"
+    _sheet_ts: "{{ r_tracker_read.accounts[support_case_account_name].last_seen_timestamp | default('', true) }}"
     _override: "{{ tracker_last_run_date | default('', true) }}"
     _fallback: "{{ activity_date }}T00:00:00Z"
   ansible.builtin.set_fact:
@@ -33,6 +24,7 @@
     client_version: "{{ redhat_graphql_client_version }}"
     account_numbers: "{{ support_case_account_ids }}"
     last_modified_since: "{{ _effective_last_modified_since | trim }}"
+    status_filter: "{{ tracker_status_filter }}"
     include_description: false
     page_size: "{{ redhat_graphql_page_size }}"
     timeout: "{{ redhat_api_timeout }}"
@@ -49,8 +41,9 @@
   ansible.builtin.debug:
     msg: >-
       No support cases with activity since {{ _effective_last_modified_since | trim }}
-      for {{ support_case_account_name }}.
-      The tracker will record zero active cases, which may surface prior cases as "closed".
+      for {{ support_case_account_name }} (closed cases are excluded server-side via
+      tracker_status_filter). The tracker will record zero active cases, which may surface
+      prior cases as "closed".
   tags: [always, filter]
 
 - name: Normalize cases for the tracker | {{ account.name }}
@@ -62,25 +55,30 @@
     tracked_cases: "{{ all_cases | json_query(tracker_case_projection) | default([], true) }}"
   tags: [always]
 
-- name: Record active cases and compute diff since last run | {{ account.name }}
+- name: Compute diff against previous state (no sheet write yet) | {{ account.name }}
   gsheet_tracker:
-    gsheet_id: "{{ gsheet_id | default(omit) }}"
-    sheet: "{{ gsheet_sheet }}"
+    state: diff
     account_name: "{{ support_case_account_name }}"
+    existing_rows: "{{ r_tracker_read.existing_rows }}"
     cases: "{{ tracked_cases }}"
-  register: r_gsheet_tracker
+  register: r_gsheet_diff
+  tags: [always]
+
+- name: Accumulate this account's rows for the single end-of-run write | {{ account.name }}
+  ansible.builtin.set_fact:
+    tracker_pending_rows: "{{ tracker_pending_rows + r_gsheet_diff.rows }}"
   tags: [always]
 
 - name: Build tracking entry | {{ account.name }}
   ansible.builtin.set_fact:
     _tracking_entry:
       account: "{{ support_case_account_name }}"
-      total_current: "{{ r_gsheet_tracker.total_current }}"
-      total_previous: "{{ r_gsheet_tracker.total_previous }}"
-      has_changes: "{{ r_gsheet_tracker.has_changes }}"
-      new_cases: "{{ r_gsheet_tracker.new_cases }}"
-      closed_cases: "{{ r_gsheet_tracker.closed_cases }}"
-      updated_cases: "{{ r_gsheet_tracker.updated_cases }}"
+      total_current: "{{ r_gsheet_diff.total_current }}"
+      total_previous: "{{ r_gsheet_diff.total_previous }}"
+      has_changes: "{{ r_gsheet_diff.has_changes }}"
+      new_cases: "{{ r_gsheet_diff.new_cases }}"
+      closed_cases: "{{ r_gsheet_diff.closed_cases }}"
+      updated_cases: "{{ r_gsheet_diff.updated_cases }}"
   tags: [always]
 
 - name: Accumulate tracking results across accounts | {{ account.name }}
@@ -95,8 +93,9 @@
       - "Support Case Tracking Complete!"
       - "============================================"
       - "Account: {{ support_case_account_name }}"
-      - "Active Cases: {{ r_gsheet_tracker.total_current }} (previously: {{ r_gsheet_tracker.total_previous }})"
-      - "New: {{ r_gsheet_tracker.new_cases | length }} | Closed: {{ r_gsheet_tracker.closed_cases | length }}
-        | Updated: {{ r_gsheet_tracker.updated_cases | length }}"
+      - "Active Cases: {{ r_gsheet_diff.total_current }} (previously: {{ r_gsheet_diff.total_previous }})"
+      - "New: {{ r_gsheet_diff.new_cases | length }} | Closed: {{ r_gsheet_diff.closed_cases | length }}
+        | Updated: {{ r_gsheet_diff.updated_cases | length }}"
+      - "(Sheet write happens once, after every account has been processed)"
       - "============================================"
   tags: [always]

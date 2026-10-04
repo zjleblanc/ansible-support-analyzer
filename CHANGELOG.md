@@ -14,6 +14,44 @@ All notable changes to the Ansible Support Analyzer project will be documented i
   `email_smtp_password`, `tracker_smtp_secure`) are now omitted from group_vars entirely,
   relying on the playbook's existing `default(omit)` logic.
 
+## 2026-10-03 — Single read/write per tracker run; exclude closed cases; Sheets Table support
+
+### Changed
+- **`gsheet_tracker` module** (`library/gsheet_tracker.py`): Replaced the `present`/`read`
+  states with three explicit, composable states — `read`, `diff`, `write` — so a multi-account
+  tracker run makes exactly **one** read and **one** write against the Google Sheets API, no
+  matter how many accounts are tracked (previously: one read + one full clear/rewrite *per
+  account*). `read` now reads the whole tab once and returns per-account previous state plus
+  `other_rows` for every account outside the current run; `diff` is a pure local computation
+  (no API calls) that builds one account's replacement rows; `write` performs the single
+  clear+rewrite with the fully assembled row list.
+  - Also fixes a latent bug where untouched accounts' `HYPERLINK` Case ID formulas were
+    silently flattened to plain text on every write that touched a *different* account — reads
+    now use `valueRenderOption=FORMULA` so formulas round-trip verbatim.
+- **`tasks/track_account.yml`** / **`track_support_cases.yml`**: Reworked around the new
+  module states — one `gsheet_tracker state=read` before the per-account loop, one
+  `state=diff` per account (accumulating rows into a `tracker_pending_rows` fact), and one
+  `state=write` after the loop.
+- **`tasks/track_account.yml`**: The GraphQL fetch now passes
+  `status_filter: "{{ tracker_status_filter }}"` (default `{ne: "Closed"}`) so closed cases are
+  excluded server-side and never re-enter the tracker's "active" set — a case that drops out of
+  the fetch because it's now closed is exactly what the diff reports under `closed_cases`.
+
+### Added
+- **`gsheet_table_name` variable** (`group_vars/all/vars.yml`, defaults to `gsheet_sheet`):
+  `gsheet_tracker state=write` creates/resizes a Google Sheets API v4 "Table" object
+  (`addTable`/`updateTable` via `batchUpdate`) over the tracker tab's data range, named after
+  this variable. Table creation/resizing is best-effort (a failure only emits a module warning,
+  since the row data has already been written by that point). Set to `""` to skip.
+  - Note: this is a Sheets API feature, not a Drive API one — the Drive API (`v3`) only exposes
+    file/folder metadata and permissions and has no endpoint for spreadsheet cell data or
+    tables, so it cannot support this; the Sheets API (which this module already uses) does.
+- **`tracker_status_filter` variable** (`group_vars/all/vars.yml`, default `{ne: "Closed"}`):
+  configurable GraphQL status filter for the tracker's fetch.
+- **Documentation**: Updated `AGENTS.md`, `docs/DATA_FLOW.md`, `docs/EXAMPLES.md`, and
+  `docs/USAGE.md` for the new read/diff/write flow, `gsheet_table_name`, and
+  `tracker_status_filter`.
+
 ## 2026-10-03 — Migrate case fetching to the Red Hat GraphQL API
 
 ### Added

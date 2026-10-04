@@ -69,8 +69,40 @@ offline token. Two additional headers (`apollographql-client-name`,
 
 ### Tracker incremental fetch
 
-`track_account.yml` calls `gsheet_tracker` with `state: read` before the GraphQL
-fetch to retrieve the `last_seen_timestamp` from the previous run. This timestamp is
-used as the `last_modified_since` cutoff so only recently changed cases are pulled.
-A manual override is available via the `tracker_last_run_date` extra variable; when
-unset, the module falls back to the sheet timestamp, then to `activity_date`.
+`track_support_cases.yml` calls `gsheet_tracker` with `state: read` **once, before the
+per-account loop**, to retrieve every tracked account's `last_seen_timestamp` from the previous
+run in a single API call. Each account's cutoff is looked up from that result (no per-account
+read); it's used as the `last_modified_since` GraphQL filter so only recently changed cases are
+pulled. A manual override is available via the `tracker_last_run_date` extra variable; when
+unset, the module falls back to the sheet timestamp, then to `activity_date`. The GraphQL fetch
+also passes `status_filter: "{{ tracker_status_filter }}"` (default `{ne: "Closed"}`) so closed
+cases never re-enter the "active" set — a case that was active last run but is now excluded by
+this filter is exactly what causes `gsheet_tracker`'s diff to report it under `closed_cases`.
+
+### Tracker writes (single write per run, not per account)
+
+`gsheet_tracker` is split into three explicit states so a multi-account run makes **exactly one**
+read and **exactly one** write against the Google Sheets API, regardless of account count:
+
+- `state: read` — one read for the whole tab; returns per-account previous state
+  (`accounts[name].last_seen_timestamp`/`total_previous`) plus `other_rows` (raw rows for
+  accounts *not* in this run, preserved verbatim — including `HYPERLINK` formulas, since the
+  read uses `valueRenderOption=FORMULA`) and `existing_rows` (the full raw matrix, for `diff`).
+- `state: diff` — pure local computation, no API calls. Computes the new/closed/updated diff
+  for one account against `existing_rows` and builds that account's replacement rows.
+- `state: write` — takes `other_rows + <every account's diff rows, accumulated>` and performs
+  the single clear+rewrite for the whole tab.
+
+`tasks/track_account.yml` calls `diff` per account and accumulates its `rows` into the
+playbook-level `tracker_pending_rows` fact; `track_support_cases.yml` calls `write` once after
+the account loop completes.
+
+### Tracker table maintenance (`gsheet_table_name`)
+
+`state: write` also maintains a Sheets API v4 "Table" object (`addTable`/`updateTable` via
+`batchUpdate`) covering the tab's full data range, named `table_name` (defaults to `gsheet_sheet`
+via the `gsheet_table_name` variable; set to `""` to skip). This is a Sheets API feature, not a
+Drive API one — the Drive API (`v3`) only exposes file/folder metadata and permissions and has no
+endpoint for spreadsheet cell data or tables, so it cannot do this. Table creation/resizing is
+best-effort: a failure only emits an `ansible.builtin.debug`-visible module warning (`module.warn`),
+since the row data itself has already been written successfully by that point.

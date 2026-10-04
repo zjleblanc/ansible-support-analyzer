@@ -340,21 +340,32 @@ ansible-playbook analyze_support_cases.yml \
 `track_support_cases.yml` is a separate, lightweight playbook designed to run as its **own job
 template** on a cadence (cron, AAP schedule, etc.). Each run:
 
-1. Reads the tracker sheet to retrieve the `last_seen_timestamp` from the previous run
-   (via `gsheet_tracker state=read`).
-2. Queries only cases modified **since the previous run** through the GraphQL API — avoids
-   re-fetching the entire case history on every cadence tick.
-3. Records them as individual rows in a **dedicated worksheet tab** that the `gsheet_tracker`
-   module owns completely (header row and all data rows) — it is *not* the `Accounts` tab used
-   by `analyze_support_cases.yml`, and does not rely on that playbook's lookup/update column
+1. Reads the tracker sheet **once, for every tracked account at the same time**
+   (via `gsheet_tracker state=read`) to retrieve each account's `last_seen_timestamp` from the
+   previous run, plus the raw rows belonging to any account *not* in this run (`other_rows`).
+2. Per account, queries only non-closed cases modified **since that account's previous run**
+   through the GraphQL API (`status_filter`, default `{ne: "Closed"}`, excludes closed cases
+   server-side) — avoids re-fetching the entire case history on every cadence tick.
+3. Diffs the current cases against what was recorded on the previous run (new / closed /
+   changed severity, status, or owner) via `gsheet_tracker state=diff` — a pure local
+   computation with **no Google API calls** — and accumulates that account's replacement rows.
+4. After every account has been processed, writes the whole tab **exactly once**
+   (`gsheet_tracker state=write`: `other_rows` + every account's accumulated rows in a single
+   clear+rewrite) — a dedicated worksheet tab that the `gsheet_tracker` module owns completely
+   (header row and all data rows). It is *not* the `Accounts` tab used by
+   `analyze_support_cases.yml`, and does not rely on that playbook's lookup/update column
    configuration. Treat it as its own green-field tab (default name: `Support Case Tracker`).
-4. Diffs the current cases against what was recorded on the previous run (new / closed /
-   changed severity, status, or owner).
+   The same step also creates/resizes a Sheets API Table over the tab, named `gsheet_table_name`
+   (defaults to the sheet name).
 5. Emails a summary of the diff via `community.general.mail` — only when something changed,
    unless `tracker_notify_on_no_changes: true`.
 
 The date cutoff is resolved in order: `tracker_last_run_date` (manual override via `-e`) →
 sheet `last_seen_timestamp` → `activity_date` fallback.
+
+No matter how many accounts are tracked, each run makes exactly **one** read and **one** write
+against the Google Sheets API (plus one small `batchUpdate` for table maintenance) — not one
+read/write pair per account.
 
 No LLM is required for this playbook.
 
@@ -445,23 +456,33 @@ ansible-playbook track_support_cases.yml \
 
 ### What gets written to the sheet
 
-Each run replaces the rows for a given account in the tracker tab (other accounts' rows are
-left untouched) with columns:
+Each run rewrites the entire tracker tab exactly once, with columns:
 
 `Account | Case ID | Summary | Product | Severity | Status | Owner | Created | Last Modified | Last Seen`
 
-### What the module returns per account
+Rows for accounts not in this run's `support_case_accounts` list are carried through verbatim
+(including any `HYPERLINK` formulas in the Case ID column); rows for every tracked account are
+replaced with that account's freshly-diffed rows.
 
-The `gsheet_tracker` module (see [library/gsheet_tracker.py](../library/gsheet_tracker.py))
-returns `new_cases`, `closed_cases`, `updated_cases` (with before/after values for severity,
-status, and owner), plus `total_current` / `total_previous` counts and `last_seen_timestamp`
-— these drive both the email template
-([templates/tracking_email.html.j2](../templates/tracking_email.html.j2)) and the per-account
-debug summary printed during the run.
+### What the module returns, by state
 
-When called with `state: read`, the module returns only `total_previous` and
-`last_seen_timestamp` (the latest `Last Seen` value for the account) without writing to the
-sheet. This powers the incremental GraphQL fetch described above.
+The `gsheet_tracker` module (see [library/gsheet_tracker.py](../library/gsheet_tracker.py)) has
+three states, called in this order once per run:
+
+- **`state: read`** (once, before the account loop) — returns `existing_rows` (the full raw
+  matrix, passed into every `diff` call), `other_rows` (untouched accounts' rows, passed into
+  the final `write` call), and `accounts` — a dict keyed by account name with
+  `last_seen_timestamp` / `total_previous` for each — without writing anything. This powers the
+  incremental GraphQL fetch described above.
+- **`state: diff`** (once per account, no API calls) — returns `new_cases`, `closed_cases`,
+  `updated_cases` (with before/after values for severity, status, and owner), `total_current` /
+  `total_previous` counts, and `rows` (that account's freshly-built replacement rows to
+  accumulate). These drive both the email template
+  ([templates/tracking_email.html.j2](../templates/tracking_email.html.j2)) and the per-account
+  debug summary printed during the run.
+- **`state: write`** (once, after the account loop) — takes the fully assembled `rows` (every
+  account's accumulated rows, concatenated with `other_rows`) and performs the single
+  clear+rewrite, plus best-effort Table maintenance (`table_name`).
 
 ## Getting Help
 
