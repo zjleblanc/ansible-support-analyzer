@@ -2,6 +2,14 @@
 
 All notable changes to the Ansible Support Analyzer project will be documented in this file.
 
+## 2026-10-03 — Link case IDs to Red Hat Customer Portal
+
+### Changed
+- **`gsheet_tracker` module**: Convert Case ID column values into `=HYPERLINK`
+  formulas pointing to the Red Hat Customer Portal. This makes case IDs
+  clickable directly within the Google Sheet.
+- **`.gitignore`**: Added `refs/` directory to ignored patterns.
+
 ## [1.6.0] - 2026-10-02
 
 ### Added

@@ -1,3 +1,5 @@
+refs/
+
 # Ansible Vault files (keep encrypted versions, ignore decrypted)
 .ansible
 **/vault.yml.decrypted

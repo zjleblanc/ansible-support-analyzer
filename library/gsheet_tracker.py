@@ -252,11 +252,21 @@ def row_to_dict(row):
     return dict(zip(HEADER_KEYS, row))
 
 
+CASE_URL_BASE = "https://access.redhat.com/support/cases/#/case/"
+
+
+def case_id_cell(case_id):
+    """Return a HYPERLINK formula for the case ID, or a plain string if empty."""
+    if not case_id:
+        return ""
+    return f'=HYPERLINK("{CASE_URL_BASE}{case_id}","{case_id}")'
+
+
 def case_to_row(account_name, case, last_seen):
     """Build a raw sheet row from a normalized case dict."""
     return [
         account_name,
-        str(case.get("case_id", "")),
+        case_id_cell(str(case.get("case_id", ""))),
         case.get("summary", "") or "",
         case.get("product", "") or "",
         case.get("severity", "") or "",
