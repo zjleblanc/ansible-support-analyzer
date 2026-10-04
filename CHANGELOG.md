@@ -2,6 +2,18 @@
 
 All notable changes to the Ansible Support Analyzer project will be documented in this file.
 
+## 2026-10-03 — Fix infinite recursion in group_vars
+
+### Fixed
+- **Infinite recursion bug**: Fixed a latent bug in `group_vars/all/vars.yml` where
+  variables were defined in terms of themselves (e.g. `tracker_smtp_secure: "{{ tracker_smtp_secure | default(omit) }}"`).
+  This caused a recursion depth error when the variable wasn't overridden by a higher-precedence source (like extra vars).
+- **Variable simplification**: Converted `email_smtp_server`, `email_smtp_server_port`,
+  `email_smtp_from_address`, and `tracker_email_to` to use direct values/lists instead of
+  self-referencing defaults. Optional parameters (`email_smtp_username`,
+  `email_smtp_password`, `tracker_smtp_secure`) are now omitted from group_vars entirely,
+  relying on the playbook's existing `default(omit)` logic.
+
 ## 2026-10-03 — Migrate case fetching to the Red Hat GraphQL API
 
 ### Added

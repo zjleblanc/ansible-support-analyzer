@@ -57,21 +57,26 @@ gsheet_truncate_priority_products:
 # These come from the "SMTP Server" credential type (config/credential_types.yml,
 # mirrored from https://github.com/zjleblanc/ansible-cac/blob/main/config/common/credential_types.yml)
 # injected as extra_vars on the track_support_cases.yml job template — NOT as
-# TRACKER_* environment variables. The self-referencing default() below lets the
-# credential's extra_vars (higher precedence) win, falling back to these defaults
-# for local/dev runs where no such credential is attached.
-email_smtp_server: "{{ email_smtp_server | default('localhost') }}"
-email_smtp_server_port: "{{ email_smtp_server_port | default(25) | int }}"
-email_smtp_username: "{{ email_smtp_username | default(omit) }}"
-email_smtp_password: "{{ email_smtp_password | default(omit) }}"
-email_smtp_from_address: "{{ email_smtp_from_address | default('ansible-tracker@example.com') }}"
+# TRACKER_* environment variables. The defaults below are for local/dev runs where
+# no such credential is attached; the credential's extra_vars (higher precedence)
+# override them automatically.
+#
+# NOTE: Do NOT use self-referencing defaults like  var: "{{ var | default(...) }}"
+# in group_vars — they cause infinite template recursion when the variable is not
+# set at a higher precedence level. For optional parameters (username, password,
+# secure), omit them here entirely and let the playbook's default(omit) handle it.
+email_smtp_server: "localhost"
+email_smtp_server_port: 25
+# email_smtp_username  — injected by SMTP credential or -e; omitted when unset
+# email_smtp_password  — injected by SMTP credential or -e; omitted when unset
+email_smtp_from_address: "ansible-tracker@example.com"
 
 # The following are plain playbook variables (not sourced from any credential type).
 # Set them with -e or as extra vars on the track_support_cases.yml job template.
-tracker_smtp_secure: "{{ tracker_smtp_secure | default(omit) }}"
+# tracker_smtp_secure — optional: try | always | never | starttls; omitted when unset
 # Recipients for the change-notification email, e.g.
 # -e tracker_email_to='["team@example.com","oncall@example.com"]'
-tracker_email_to: "{{ tracker_email_to | default([]) }}"
+tracker_email_to: []
 tracker_email_subject: "Support Case Tracker - Changes Detected"
 
 # When false (default), the notification email is only sent if at least one
