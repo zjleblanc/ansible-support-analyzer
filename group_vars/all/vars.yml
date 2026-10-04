@@ -7,7 +7,7 @@ llm_api_key: "{{ lookup('env', 'LLM_API_KEY') | default(vault_llm_api_key, true)
 
 # Red Hat SSO and API configuration
 redhat_sso_url: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token"
-redhat_api_base_url: "https://api.access.redhat.com/support/v1"
+redhat_api_base_url: "https://api.access.redhat.com/support/v3"
 redhat_api_timeout: 30
 
 # Default output configuration
