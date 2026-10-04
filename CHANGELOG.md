@@ -2,6 +2,35 @@
 
 All notable changes to the Ansible Support Analyzer project will be documented in this file.
 
+## 2026-10-03 — Migrate case fetching to the Red Hat GraphQL API
+
+### Added
+- **`graphql_cases` module** (`library/graphql_cases.py`): Queries the Red Hat GraphQL API
+  (`https://graphql.redhat.com`) for support cases with server-side filtering (account
+  numbers via `in`, last-modified date via `gt`, optional status/product filters — including
+  `like` wildcard matching) instead of pulling the full case list and filtering client-side.
+  Handles cursor-based pagination automatically and normalizes GraphQL field names back to
+  the legacy REST shape (`caseNumber`, `summary`, `product`, etc.) so templates needed no
+  changes.
+- **`gsheet_tracker` `state: read` mode**: Reads the tracker sheet and returns
+  `last_seen_timestamp` / `total_previous` for an account without writing, so the tracker
+  playbook can determine an incremental fetch cutoff before calling the GraphQL API.
+- **New variables** in `group_vars/all/vars.yml`: `redhat_graphql_url`,
+  `redhat_graphql_client_name`, `redhat_graphql_client_version`, `redhat_graphql_page_size`.
+- **`docs/DATA_FLOW.md`**: Sequence-diagram walkthrough of the analyzer and tracker data flows
+  against SSO, GraphQL, Google Sheets, and the LLM API.
+
+### Changed
+- **`tasks/analyze_account.yml`**: Replaced the REST `POST /cases/filter` loop (one request per
+  account ID) plus client-side `selectattr` activity-date filtering with a single
+  `graphql_cases` call per account config — filtering and pagination now happen server-side.
+- **`tasks/track_account.yml`**: Now reads the previous `last_seen_timestamp` via
+  `gsheet_tracker state=read` before fetching, so each run only queries cases modified since
+  the last run (falls back to `tracker_last_run_date` override, then `activity_date`). Also
+  requests cases with `include_description: false` to shrink payload size.
+- **Documentation**: Updated `AGENTS.md` and `docs/EXAMPLES.md` with the GraphQL endpoint,
+  module usage, and the tracker's incremental-fetch behavior.
+
 ## 2026-10-03 — Link case IDs to Red Hat Customer Portal
 
 ### Changed
