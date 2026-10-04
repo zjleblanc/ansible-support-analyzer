@@ -328,21 +328,33 @@ ansible-playbook analyze_support_cases.yml \
 - **Rate limiting**: Be mindful of Red Hat API limits when processing many accounts
 - **LLM quotas**: Monitor your LLM provider when analyzing large case volumes
 - **Google Sheets**: See [GSUITE_QUICKSTART.md](GSUITE_QUICKSTART.md) for service account setup
+- **GraphQL API**: Both playbooks query `https://graphql.redhat.com` via the `graphql_cases`
+  module, which filters and paginates server-side. Override the endpoint or Apollo headers via
+  `redhat_graphql_url`, `redhat_graphql_client_name`, and `redhat_graphql_client_version`
+  in `group_vars/all/vars.yml`.
+- **Product filtering**: Use `product_filter` with the GraphQL `like` operator for starts-with
+  matching (e.g. `{like: "Red Hat Ansible%"}`). See `library/graphql_cases.py` for all options.
 
 ## Tracking Support Case Changes (`track_support_cases.yml`)
 
 `track_support_cases.yml` is a separate, lightweight playbook designed to run as its **own job
 template** on a cadence (cron, AAP schedule, etc.). Each run:
 
-1. Queries the same `support_case_accounts` for active support cases.
-2. Records them as individual rows in a **dedicated worksheet tab** that the `gsheet_tracker`
+1. Reads the tracker sheet to retrieve the `last_seen_timestamp` from the previous run
+   (via `gsheet_tracker state=read`).
+2. Queries only cases modified **since the previous run** through the GraphQL API — avoids
+   re-fetching the entire case history on every cadence tick.
+3. Records them as individual rows in a **dedicated worksheet tab** that the `gsheet_tracker`
    module owns completely (header row and all data rows) — it is *not* the `Accounts` tab used
    by `analyze_support_cases.yml`, and does not rely on that playbook's lookup/update column
    configuration. Treat it as its own green-field tab (default name: `Support Case Tracker`).
-3. Diffs the current cases against what was recorded on the previous run (new / closed /
+4. Diffs the current cases against what was recorded on the previous run (new / closed /
    changed severity, status, or owner).
-4. Emails a summary of the diff via `community.general.mail` — only when something changed,
+5. Emails a summary of the diff via `community.general.mail` — only when something changed,
    unless `tracker_notify_on_no_changes: true`.
+
+The date cutoff is resolved in order: `tracker_last_run_date` (manual override via `-e`) →
+sheet `last_seen_timestamp` → `activity_date` fallback.
 
 No LLM is required for this playbook.
 
@@ -420,6 +432,17 @@ ansible-playbook track_support_cases.yml \
   -e tracker_notify_on_no_changes=true
 ```
 
+### Override the last-run date cutoff
+
+Force the tracker to re-fetch all cases modified since a specific date, ignoring the sheet's
+stored `last_seen` timestamp:
+
+```bash
+ansible-playbook track_support_cases.yml \
+  -e @vars/accounts.yml \
+  -e tracker_last_run_date="2026-01-01T00:00:00Z"
+```
+
 ### What gets written to the sheet
 
 Each run replaces the rows for a given account in the tracker tab (other accounts' rows are
@@ -431,9 +454,14 @@ left untouched) with columns:
 
 The `gsheet_tracker` module (see [library/gsheet_tracker.py](../library/gsheet_tracker.py))
 returns `new_cases`, `closed_cases`, `updated_cases` (with before/after values for severity,
-status, and owner), plus `total_current` / `total_previous` counts — these drive both the
-email template ([templates/tracking_email.html.j2](../templates/tracking_email.html.j2)) and
-the per-account debug summary printed during the run.
+status, and owner), plus `total_current` / `total_previous` counts and `last_seen_timestamp`
+— these drive both the email template
+([templates/tracking_email.html.j2](../templates/tracking_email.html.j2)) and the per-account
+debug summary printed during the run.
+
+When called with `state: read`, the module returns only `total_previous` and
+`last_seen_timestamp` (the latest `Last Seen` value for the account) without writing to the
+sheet. This powers the incremental GraphQL fetch described above.
 
 ## Getting Help
 

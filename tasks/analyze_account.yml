@@ -12,52 +12,25 @@
     gsheet_lookup_value: "{{ account.gsheet_lookup_value | default(account.ids[0] | string) }}"
   tags: [always]
 
-- name: Fetch support cases for each customer account | {{ account.name }}
-  loop: "{{ support_case_account_ids }}"
-  loop_control:
-    loop_var: account_id
-    label: "Account {{ account_id }}"
-  ansible.builtin.uri:
-    url: "{{ redhat_api_base_url }}/cases/filter"
-    method: POST
-    body:
-      accountNumber: "{{ account_id }}"
-    headers:
-      Accept: "application/json"
-      Authorization: "Bearer {{ redhat_access_token }}"
-    body_format: json
-    status_code: [200, 201]
+- name: Fetch support cases via GraphQL | {{ account.name }}
+  graphql_cases:
+    access_token: "{{ redhat_access_token }}"
+    graphql_url: "{{ redhat_graphql_url }}"
+    client_name: "{{ redhat_graphql_client_name }}"
+    client_version: "{{ redhat_graphql_client_version }}"
+    account_numbers: "{{ support_case_account_ids }}"
+    last_modified_since: "{{ activity_date }}T00:00:00Z"
+    page_size: "{{ redhat_graphql_page_size }}"
     timeout: "{{ redhat_api_timeout }}"
   register: r_support_cases
-  ignore_errors: true
   tags: [fetch]
 
-- name: Extract cases from API response | {{ account.name }}
+- name: Set all_cases from GraphQL response | {{ account.name }}
   ansible.builtin.set_fact:
-    all_cases: "{{ r_support_cases.results | json_query('[?json].json.cases[]') | default([], true) }}"
-  tags: [filter]
+    all_cases: "{{ r_support_cases.cases | default([], true) }}"
+  tags: [fetch]
 
-- name: Report API fetch failures | {{ account.name }}
-  when: r_support_cases.results | rejectattr('json', 'defined') | list | length > 0
-  ansible.builtin.debug:
-    msg: >-
-      Warning: {{ r_support_cases.results | rejectattr('json', 'defined') | list | length }}
-      of {{ r_support_cases.results | length }} account API request(s) failed.
-      Proceeding with cases returned by successful requests.
-  tags: [filter]
-
-- name: Filter cases by activity date | {{ account.name }}
-  ansible.builtin.set_fact:
-    all_cases: >-
-      {{
-        all_cases
-        | selectattr('lastModifiedDate', 'defined')
-        | selectattr('lastModifiedDate', '>=', activity_date)
-        | list
-      }}
-  tags: [filter]
-
-- name: Note when no cases match activity filter | {{ account.name }}
+- name: Note when no cases match filters | {{ account.name }}
   when: all_cases | length == 0
   ansible.builtin.debug:
     msg: >-

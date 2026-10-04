@@ -6,7 +6,7 @@ Guidance for agents (and humans) working in this repository.
 
 - `analyze_support_cases.yml` / `track_support_cases.yml` — top-level playbooks.
 - `tasks/` — included task files (`analyze_account.yml`, `track_account.yml`).
-- `library/` — custom Ansible modules (Python): `gsheet_update.py`, `gsheet_tracker.py`, `llm_summarize.py`.
+- `library/` — custom Ansible modules (Python): `gsheet_update.py`, `gsheet_tracker.py`, `graphql_cases.py`, `llm_summarize.py`.
 - `templates/` — Jinja2 templates for markdown/JSON/HTML reports.
 - `group_vars/all/vars.yml` — default variables; `vars/inputs.example.yml` — per-run input example.
 - `config/credential_types.yml` — Ansible Automation Platform custom credential type definitions
@@ -49,3 +49,28 @@ Notable, non-obvious configuration choices:
 - Use `ansible.builtin.command`/`ansible.builtin.shell` with `changed_when:` set explicitly
   rather than relying on the default (always "changed") behavior.
 - Tag lists use spaces after commas: `tags: [ai, pdf, never]`.
+
+## Red Hat GraphQL API
+
+Both playbooks fetch support cases via the `graphql_cases` custom module, which queries
+`https://graphql.redhat.com` (configurable via `redhat_graphql_url`). The module handles:
+
+- **Server-side filtering** — account numbers (`in`), last-modified date (`gt`),
+  status, and product (supports `like` with `%` wildcard for starts-with matching).
+- **Cursor-based pagination** — automatically follows `pageInfo.endCursor` until all
+  pages are collected (max 200 records per page per API guidelines).
+- **Field normalization** — maps GraphQL field names (e.g. `CaseNumber__c.value`,
+  `Subject.value`) back to the legacy REST field names (`caseNumber`, `summary`, …)
+  so templates and downstream tasks require no changes.
+
+Authentication reuses the same SSO bearer token already exchanged from the Red Hat
+offline token. Two additional headers (`apollographql-client-name`,
+`apollographql-client-version`) are configurable in `group_vars/all/vars.yml`.
+
+### Tracker incremental fetch
+
+`track_account.yml` calls `gsheet_tracker` with `state: read` before the GraphQL
+fetch to retrieve the `last_seen_timestamp` from the previous run. This timestamp is
+used as the `last_modified_since` cutoff so only recently changed cases are pulled.
+A manual override is available via the `tracker_last_run_date` extra variable; when
+unset, the module falls back to the sheet timestamp, then to `activity_date`.

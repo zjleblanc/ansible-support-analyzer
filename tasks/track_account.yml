@@ -6,56 +6,50 @@
     activity_date: "{{ account.activity_date | default(activity_date) }}"
   tags: [always]
 
-- name: Fetch support cases for each customer account | {{ account.name }}
-  loop: "{{ support_case_account_ids }}"
-  loop_control:
-    loop_var: account_id
-    label: "Account {{ account_id }}"
-  ansible.builtin.uri:
-    url: "{{ redhat_api_base_url }}/cases/filter"
-    method: POST
-    body:
-      accountNumber: "{{ account_id }}"
-    headers:
-      Accept: "application/json"
-      Authorization: "Bearer {{ redhat_access_token }}"
-    body_format: json
-    status_code: [200, 201]
-    timeout: "{{ redhat_api_timeout }}"
-  register: r_support_cases
-  ignore_errors: true
+- name: Read previous tracker state for last-run timestamp | {{ account.name }}
+  gsheet_tracker:
+    state: read
+    gsheet_id: "{{ gsheet_id | default(omit) }}"
+    sheet: "{{ gsheet_sheet }}"
+    account_name: "{{ support_case_account_name }}"
+  register: r_tracker_prev
   tags: [always, fetch]
 
-- name: Extract cases from API response | {{ account.name }}
+- name: Determine effective last-modified cutoff | {{ account.name }}
+  vars:
+    _sheet_ts: "{{ r_tracker_prev.last_seen_timestamp | default('', true) }}"
+    _override: "{{ tracker_last_run_date | default('', true) }}"
+    _fallback: "{{ activity_date }}T00:00:00Z"
   ansible.builtin.set_fact:
-    all_cases: "{{ r_support_cases.results | json_query('[?json].json.cases[]') | default([], true) }}"
-  tags: [always, filter]
+    _effective_last_modified_since: >-
+      {{ _override if (_override | length > 0) else (_sheet_ts if (_sheet_ts | length > 0) else _fallback) }}
+  tags: [always, fetch]
 
-- name: Report API fetch failures | {{ account.name }}
-  when: r_support_cases.results | rejectattr('json', 'defined') | list | length > 0
-  ansible.builtin.debug:
-    msg: >-
-      Warning: {{ r_support_cases.results | rejectattr('json', 'defined') | list | length }}
-      of {{ r_support_cases.results | length }} account API request(s) failed.
-      Proceeding with cases returned by successful requests.
-  tags: [always, filter]
+- name: Fetch support cases via GraphQL | {{ account.name }}
+  graphql_cases:
+    access_token: "{{ redhat_access_token }}"
+    graphql_url: "{{ redhat_graphql_url }}"
+    client_name: "{{ redhat_graphql_client_name }}"
+    client_version: "{{ redhat_graphql_client_version }}"
+    account_numbers: "{{ support_case_account_ids }}"
+    last_modified_since: "{{ _effective_last_modified_since | trim }}"
+    include_description: false
+    page_size: "{{ redhat_graphql_page_size }}"
+    timeout: "{{ redhat_api_timeout }}"
+  register: r_support_cases
+  tags: [always, fetch]
 
-- name: Filter cases by activity date | {{ account.name }}
+- name: Set all_cases from GraphQL response | {{ account.name }}
   ansible.builtin.set_fact:
-    all_cases: >-
-      {{
-        all_cases
-        | selectattr('lastModifiedDate', 'defined')
-        | selectattr('lastModifiedDate', '>=', activity_date)
-        | list
-      }}
-  tags: [always, filter]
+    all_cases: "{{ r_support_cases.cases | default([], true) }}"
+  tags: [always, fetch]
 
-- name: Note when no cases match activity filter | {{ account.name }}
+- name: Note when no cases match filters | {{ account.name }}
   when: all_cases | length == 0
   ansible.builtin.debug:
     msg: >-
-      No support cases with activity since {{ activity_date }} for {{ support_case_account_name }}.
+      No support cases with activity since {{ _effective_last_modified_since | trim }}
+      for {{ support_case_account_name }}.
       The tracker will record zero active cases, which may surface prior cases as "closed".
   tags: [always, filter]
 

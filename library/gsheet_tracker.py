@@ -27,6 +27,15 @@ description:
 author:
     - Ansible Support Analyzer
 options:
+    state:
+        description:
+            - C(present) (default) reads the sheet, diffs, and writes updated rows — existing behavior.
+            - C(read) reads the sheet and returns the previous state for O(account_name) (including
+              C(last_seen_timestamp)) B(without writing anything). Use this before a GraphQL fetch
+              to determine the date cutoff for incremental queries.
+        type: str
+        choices: [present, read]
+        default: present
     credentials_path:
         description:
             - Path to the Google service account JSON key file.
@@ -68,6 +77,13 @@ options:
 """
 
 EXAMPLES = r"""
+- name: Read previous state to determine last-run timestamp (state=read)
+  gsheet_tracker:
+    state: read
+    sheet: "Case Tracker"
+    account_name: "Parasol"
+  register: tracker_prev
+
 - name: Record active cases and compute the diff since the last run
   gsheet_tracker:
     sheet: "Case Tracker"
@@ -133,6 +149,13 @@ gsheet_id:
     returned: success
 sheet:
     description: The worksheet tab name used.
+    type: str
+    returned: success
+last_seen_timestamp:
+    description: >-
+        The latest C(Last Seen) value among previous rows for O(account_name), or an empty
+        string when no previous rows exist. Useful as a C(last_modified_since) cutoff for
+        incremental GraphQL queries. Always returned, but most relevant with C(state=read).
     type: str
     returned: success
 """
@@ -285,6 +308,13 @@ def normalize_case(case):
     return normalized
 
 
+def latest_last_seen(previous_account_rows):
+    """Return the most recent last_seen value from previous account rows, or ''."""
+    timestamps = [row.get("last_seen", "") for row in previous_account_rows]
+    timestamps = [t for t in timestamps if t]
+    return max(timestamps) if timestamps else ""
+
+
 def diff_cases(previous_by_id, current_by_id):
     """Compute new/closed/updated cases between two case_id-keyed dicts."""
     previous_ids = set(previous_by_id)
@@ -319,6 +349,7 @@ def diff_cases(previous_by_id, current_by_id):
 def main():
     module = AnsibleModule(
         argument_spec=dict(
+            state=dict(type="str", default="present", choices=["present", "read"]),
             credentials_path=dict(type="path"),
             credentials=dict(type="dict", no_log=True),
             gsheet_id=dict(type="str", aliases=["spreadsheet_id"]),
@@ -388,6 +419,19 @@ def main():
         row["case_id"]: row for row in previous_account_rows if row.get("case_id")
     }
 
+    last_seen_ts = latest_last_seen(previous_account_rows)
+    state = module.params["state"]
+
+    # state=read: return previous-state metadata without diffing or writing.
+    if state == "read":
+        module.exit_json(
+            changed=False,
+            total_previous=len(previous_by_id),
+            last_seen_timestamp=last_seen_ts,
+            gsheet_id=gsheet_id,
+            sheet=sheet,
+        )
+
     normalized_cases = [normalize_case(case) for case in module.params["cases"]]
     missing_id = next((c for c in normalized_cases if not c["case_id"]), None)
     if missing_id is not None:
@@ -416,6 +460,7 @@ def main():
         has_changes=has_changes,
         gsheet_id=gsheet_id,
         sheet=sheet,
+        last_seen_timestamp=last_seen_ts,
     )
 
     if module.check_mode:

@@ -10,6 +10,12 @@ redhat_sso_url: "https://sso.redhat.com/auth/realms/redhat-external/protocol/ope
 redhat_api_base_url: "https://api.access.redhat.com/support/v3"
 redhat_api_timeout: 30
 
+# Red Hat GraphQL API configuration (used by graphql_cases module)
+redhat_graphql_url: "https://graphql.redhat.com"
+redhat_graphql_client_name: "ansible-support-analyzer"
+redhat_graphql_client_version: "1.0"
+redhat_graphql_page_size: 200
+
 # Default output configuration
 default_analysis_file_dest: "reports/{{ support_case_account_name | default('Account') }}_support_case_summary_{{ now(fmt='%Y-%m-%d') }}"
 
